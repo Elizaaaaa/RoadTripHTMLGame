@@ -1,0 +1,650 @@
+/* ui.css —— 引擎侧通用界面样式。框架阶段视觉从简，重点是把各系统的状态
+   （已去过/有新事件/主线/加油站/理智档位）用得上的 class 都接好，
+   具体美术风格由你以后自己换皮。 */
+
+:root {
+  --bg: #0a0a0a;
+  --panel: #141414;
+  --line: #3a3a3a;
+  --text: #d8d8d8;
+  --accent: #ff9900;
+  --accent-2: #00ccff;
+  --danger: #ff4433;
+  --accent-rgb: 255, 153, 0;
+  --accent2-rgb: 0, 204, 255;
+  --danger-rgb: 255, 68, 51;
+
+  /* macOS 质感：菜单栏/窗口的毛玻璃与描边取值集中放这里，方便统一调 */
+  --menubar-bg: rgba(28, 28, 30, 0.72);
+  --menubar-border: rgba(255, 255, 255, 0.08);
+  --window-bg: rgba(32, 32, 34, 0.88);
+  --window-titlebar: rgba(255, 255, 255, 0.05);
+  --window-border: rgba(255, 255, 255, 0.13);
+  --window-shadow: 0 20px 60px rgba(0, 0, 0, 0.55), 0 2px 8px rgba(0, 0, 0, 0.35);
+  --traffic-red: #ff5f57;
+  --traffic-yellow: #febc2e;
+  --traffic-green: #28c840;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  height: 100%;
+  background: var(--bg);
+  color: var(--text);
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro SC", "SF Pro Text",
+    "PingFang SC", "Microsoft YaHei", sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+#app {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+}
+
+/* --- 状态栏：仿 macOS 顶部菜单栏，营造"在自己电脑上看结果"的观感 --- */
+#status-bar {
+  display: flex;
+  align-items: center;
+  height: 60px;
+  padding: 0 14px;
+  background: var(--menubar-bg);
+  backdrop-filter: blur(20px) saturate(1.8);
+  -webkit-backdrop-filter: blur(20px) saturate(1.8);
+  border-bottom: 1px solid var(--menubar-border);
+  flex-shrink: 0;
+  font-size: 13px;
+  position: relative;
+  z-index: 50;
+}
+
+.menu-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.menu-brand {
+  color: var(--accent);
+  font-size: 9px;
+}
+
+.menu-right {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.menu-item { opacity: 0.85; }
+
+#status-bar .status-buttons {
+  display: flex;
+  gap: 6px;
+}
+
+.menu-pill {
+  position: relative;
+  height: 28px;
+  padding: 0 13px;
+  border-radius: 6px;
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--text);
+  font-size: 15px;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.menu-pill:hover {
+  background: rgba(255, 255, 255, 0.12);
+  border-color: transparent;
+  color: #fff;
+}
+
+#day-display { font-weight: 700; color: var(--accent-2); }
+#clock-display { font-variant-numeric: tabular-nums; letter-spacing: 0.3px; }
+#sanity-display::before { content: "\25c9"; margin-right: 4px; font-size: 9px; opacity: 0.8; }
+#sanity-display { color: var(--accent); }
+
+/* --- 地图 --- */
+#map-viewport {
+  position: relative;
+  flex: 1;
+  overflow: hidden;
+  touch-action: none;
+  cursor: grab;
+  background: #000;
+}
+
+.map-content {
+  position: absolute;
+  top: 0; left: 0;
+  width: 100%;
+  height: 100%;
+  will-change: transform;
+}
+
+.map-image {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: contain;
+  pointer-events: none;
+  user-select: none;
+}
+
+.hotspot {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+}
+
+.hotspot-dot {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--accent-2);
+  border: 2px solid #fff;
+  box-shadow: 0 0 6px rgba(0,0,0,0.6);
+}
+
+.hotspot-basecamp .hotspot-dot {
+  background: var(--accent);
+  width: 22px;
+  height: 22px;
+}
+
+.hotspot-label {
+  font-size: 12px;
+  padding: 1px 6px;
+  background: rgba(0,0,0,0.7);
+  border-radius: 3px;
+  white-space: nowrap;
+}
+
+.hotspot.locked {
+  opacity: 0.3;
+  pointer-events: none;
+}
+
+.hotspot.visited .hotspot-dot {
+  filter: grayscale(0.6) brightness(0.7);
+}
+
+.hotspot.mainline .hotspot-dot {
+  border-color: var(--accent);
+}
+
+.hotspot.current .hotspot-label {
+  outline: 1px solid var(--accent-2);
+}
+
+.hotspot.has-event .hotspot-dot {
+  animation: pulse 1.4s infinite;
+}
+
+@keyframes pulse {
+  0%   { box-shadow: 0 0 0 0 rgba(255,153,0,0.7); }
+  70%  { box-shadow: 0 0 0 10px rgba(255,153,0,0); }
+  100% { box-shadow: 0 0 0 0 rgba(255,153,0,0); }
+}
+
+#map-controls {
+  position: absolute;
+  right: 16px;
+  bottom: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  z-index: 30;
+}
+
+#map-controls button {
+  width: 34px;
+  height: 34px;
+  font-size: 18px;
+}
+
+/* --- 通用按钮：仿 macOS 圆角按钮，默认即"强调色"填充（呼应 accent 可当系统强调色） --- */
+button, .btn {
+  background: rgba(var(--accent-rgb), 0.22);
+  color: #fff;
+  border: 1px solid rgba(var(--accent-rgb), 0.55);
+  padding: 6px 14px;
+  cursor: pointer;
+  font-size: 13px;
+  font-family: inherit;
+  border-radius: 6px;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+button:hover, .btn:hover {
+  background: rgba(var(--accent-rgb), 0.32);
+  border-color: var(--accent);
+  color: #fff;
+}
+button:active, .btn:active { background: rgba(var(--accent-rgb), 0.42); }
+
+button:disabled, .btn:disabled {
+  background: rgba(255, 255, 255, 0.04);
+  border-color: rgba(255, 255, 255, 0.08);
+  color: #666;
+  cursor: default;
+}
+button:disabled:hover, .btn:disabled:hover { background: rgba(255, 255, 255, 0.04); border-color: rgba(255, 255, 255, 0.08); color: #666; }
+
+.btn-gray {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.14);
+  color: #aaa;
+}
+.btn-gray:hover { background: rgba(255, 255, 255, 0.12); color: #fff; }
+
+.btn-danger {
+  background: rgba(var(--danger-rgb), 0.16);
+  border-color: var(--danger);
+  color: #ff9a8c;
+}
+.btn-danger:hover { background: rgba(var(--danger-rgb), 0.26); color: #fff; }
+
+.btn-option {
+  display: block;
+  width: 100%;
+  text-align: left;
+  margin-bottom: 6px;
+  background: rgba(255, 255, 255, 0.05);
+  border-color: rgba(255, 255, 255, 0.12);
+  color: var(--text);
+}
+.btn-option:hover { background: rgba(255, 255, 255, 0.1); border-color: var(--accent-2); color: #fff; }
+
+/* --- 弹窗：仿 macOS 悬浮窗口（毛玻璃 + 红黄绿交通灯），配合状态栏营造"在自己电脑桌面上
+   查看结果"的感觉。窗口本身由 main.js 的 renderWindow() 统一拼出 .mac-titlebar/.mac-body。 --- */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.4);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+}
+
+.modal-box {
+  background: var(--window-bg);
+  backdrop-filter: blur(24px) saturate(1.6);
+  -webkit-backdrop-filter: blur(24px) saturate(1.6);
+  border: 1px solid var(--window-border);
+  border-radius: 12px;
+  padding: 0;
+  max-width: 560px;
+  width: 90%;
+  max-height: 80vh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  box-shadow: var(--window-shadow);
+}
+
+/* 窗口标题栏：左侧交通灯（红=关闭，黄/绿仅装饰），标题居中 */
+.mac-titlebar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 38px;
+  padding: 0 12px;
+  flex-shrink: 0;
+  background: var(--window-titlebar);
+  border-bottom: 1px solid var(--window-border);
+  position: relative;
+  user-select: none;
+}
+
+.mac-traffic { display: flex; gap: 8px; z-index: 1; }
+
+.mac-dot {
+  width: 12px;
+  height: 12px;
+  margin: 0;
+  border: none;
+  padding: 0;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 9px;
+  line-height: 1;
+  color: transparent;
+  cursor: default;
+}
+#mac-close { cursor: pointer; }
+.mac-dot-red { background: var(--traffic-red); }
+.mac-dot-yellow { background: var(--traffic-yellow); }
+.mac-dot-green { background: var(--traffic-green); }
+.mac-titlebar:hover .mac-dot { color: rgba(0,0,0,0.55); }
+.mac-dot-red::before { content: "×"; }
+.mac-dot-yellow::before { content: "−"; }
+.mac-dot-green::before { content: "+"; }
+
+.mac-title {
+  position: absolute;
+  left: 0;
+  right: 0;
+  text-align: center;
+  font-size: 13px;
+  font-weight: 600;
+  color: rgba(255,255,255,0.85);
+  pointer-events: none;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  padding: 0 90px;
+}
+
+.mac-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  padding: 20px;
+  overflow-y: auto;
+}
+
+.hidden { display: none !important; }
+
+.event-text { line-height: 1.7; margin-bottom: 14px; white-space: pre-wrap; }
+.hint { color: #888; font-size: 0.9em; }
+
+/* 仿 macOS 分段控件（System Settings 里常见的胶囊 tab） */
+.tabs {
+  display: flex;
+  gap: 2px;
+  padding: 3px;
+  margin-bottom: 14px;
+  background: rgba(255,255,255,0.06);
+  border-radius: 8px;
+  width: fit-content;
+}
+.tab-btn {
+  position: relative;
+  background: transparent;
+  border: none;
+  padding: 5px 12px;
+  font-size: 12.5px;
+  border-radius: 6px;
+  color: rgba(255,255,255,0.6);
+}
+.tab-btn:hover { color: #fff; background: transparent; }
+.tab-btn.active {
+  background: rgba(var(--accent-rgb), 0.9);
+  color: #1a1a1a;
+  font-weight: 600;
+}
+
+/* 未读小红点：记事本按钮本身 + 记事本内各分类 tab 共用同一套样式 */
+#btn-notebook { position: relative; }
+.notif-dot {
+  position: absolute;
+  top: -1px;
+  right: -1px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--danger);
+  box-shadow: 0 0 4px rgba(255,68,51,0.7);
+}
+
+.archive-entry {
+  margin-bottom: 10px;
+  padding: 10px 12px;
+  background: rgba(255,255,255,0.04);
+  border-radius: 8px;
+}
+.archive-entry-title { font-weight: 700; margin-bottom: 4px; color: var(--accent-2); }
+
+.clue-list { padding-left: 18px; }
+
+.signal-digest { margin-top: 12px; padding-top: 8px; border-top: 1px dashed var(--line); }
+.signal-line { color: var(--accent-2); font-size: 0.9em; }
+
+/* 仿 macOS 细条进度条 */
+.progress-bar { background: rgba(255,255,255,0.08); height: 8px; border-radius: 4px; overflow: hidden; margin: 12px 0; }
+.progress-fill { height: 100%; background: rgba(var(--accent-rgb), 0.95); }
+
+/* 记事本：仿 Notes.app 的侧栏(分类) + 内容区两栏布局 */
+.mac-split { display: flex; gap: 16px; align-items: flex-start; }
+.mac-sidebar {
+  flex: 0 0 128px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.mac-pane {
+  flex: 1;
+  min-width: 0;
+  max-height: 50vh;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+.sidebar-item {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  text-align: left;
+  background: transparent;
+  border: none;
+  padding: 6px 10px;
+  border-radius: 6px;
+  font-size: 13px;
+  color: rgba(255,255,255,0.75);
+}
+.sidebar-item:hover { background: rgba(255,255,255,0.08); color: #fff; }
+.sidebar-item.active {
+  background: rgba(var(--accent-rgb), 0.85);
+  color: #1a1a1a;
+  font-weight: 600;
+}
+.sidebar-item .notif-dot { position: static; margin-left: 6px; flex-shrink: 0; }
+
+.ending-title { font-size: 1.4em; color: var(--accent); margin-bottom: 10px; }
+
+/* 关键词高亮：已解锁常亮，未解锁灰底虚线提示"可深挖" */
+.kw { cursor: pointer; }
+.kw-unlocked { color: var(--accent-2); text-decoration: underline; }
+.kw-locked { background: rgba(255,255,255,0.08); border-bottom: 1px dashed #888; }
+
+/* --- Toast：仿 macOS 通知中心右上角横幅 --- */
+#toast {
+  position: fixed;
+  top: 74px;
+  right: 16px;
+  background: rgba(40,40,42,0.85);
+  backdrop-filter: blur(20px) saturate(1.8);
+  -webkit-backdrop-filter: blur(20px) saturate(1.8);
+  border: 1px solid rgba(255,255,255,0.12);
+  color: var(--text);
+  padding: 12px 16px;
+  border-radius: 12px;
+  z-index: 200;
+  max-width: 320px;
+  width: max-content;
+  font-size: 13px;
+  line-height: 1.5;
+  box-shadow: var(--window-shadow);
+  transition: opacity 0.3s;
+  animation: toastIn 0.25s ease-out;
+}
+
+@keyframes toastIn {
+  from { opacity: 0; transform: translateY(-8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* --- 开始剪辑：仿简易剪辑软件的复盘 UI（素材库 + 时间轴，拖拽拼顺序） --- */
+.modal-box.modal-wide { max-width: 860px; }
+
+.editor-brief { margin-bottom: 4px; }
+.editor-brief .event-text { margin-bottom: 4px; }
+
+.editor-panel-label {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.45);
+  margin: 16px 0 8px;
+}
+.editor-panel-label:first-of-type { margin-top: 8px; }
+
+/* 素材库：已收集的素材以"视频素材"图标摆放，可拖拽 */
+.clip-library {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  min-height: 96px;
+  padding: 10px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--window-border);
+  border-radius: 8px;
+}
+
+.clip-icon {
+  width: 92px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 8px 6px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  cursor: grab;
+  text-align: center;
+  user-select: none;
+}
+.clip-icon:hover { border-color: var(--accent-2); background: rgba(255, 255, 255, 0.08); }
+.clip-icon.dragging { opacity: 0.35; }
+
+.clip-icon-thumb { font-size: 22px; line-height: 1; }
+.clip-icon-label { font-size: 11px; line-height: 1.35; color: var(--text); }
+
+.clip-tag {
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  font-weight: 700;
+}
+.clip-tag.tag-low  { background: rgba(255, 255, 255, 0.1); color: #aaa; }
+.clip-tag.tag-mid  { background: rgba(var(--accent2-rgb), 0.2); color: var(--accent-2); }
+.clip-tag.tag-high { background: rgba(var(--accent-rgb), 0.24); color: var(--accent); }
+
+/* 时间轴：拖放区，落下的素材变成长方形，长度按重要度分档 */
+.timeline-track {
+  display: flex;
+  align-items: stretch;
+  gap: 6px;
+  min-height: 64px;
+  padding: 8px;
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px dashed var(--line);
+  border-radius: 8px;
+  overflow-x: auto;
+}
+.timeline-track.drag-over { border-color: var(--accent-2); background: rgba(var(--accent2-rgb), 0.08); }
+
+.timeline-empty {
+  margin: auto;
+  color: #777;
+  font-size: 12.5px;
+}
+
+.clip-block {
+  position: relative;
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  padding: 0 22px 0 10px;
+  border-radius: 6px;
+  background: rgba(var(--accent2-rgb), 0.22);
+  border: 1px solid rgba(var(--accent2-rgb), 0.55);
+  color: #fff;
+  font-size: 11.5px;
+  cursor: grab;
+  white-space: nowrap;
+  overflow: hidden;
+}
+.clip-block.dragging { opacity: 0.35; }
+.clip-block-label { overflow: hidden; text-overflow: ellipsis; }
+.clip-block.imp-low  { width: 64px; }
+.clip-block.imp-mid  { width: 110px; }
+.clip-block.imp-high { width: 160px; }
+
+.clip-block-remove {
+  position: absolute;
+  right: 2px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.35);
+  color: #fff;
+  font-size: 11px;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.clip-block-remove:hover { background: var(--danger); }
+
+.editor-feedback {
+  margin-top: 12px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  font-size: 13px;
+  line-height: 1.6;
+}
+.editor-feedback.feedback-ok   { background: rgba(40, 200, 90, 0.14); border: 1px solid rgba(40, 200, 90, 0.4); color: #a8f0c0; }
+.editor-feedback.feedback-bad  { background: rgba(var(--danger-rgb), 0.14); border: 1px solid rgba(var(--danger-rgb), 0.4); color: #ff9a8c; }
+
+.editor-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+/* 素材简介小窗：叠在剪辑台窗口之上，点素材图标弹出，同一套 mac 窗口质感但更窄。 */
+.clip-info-overlay { z-index: 150; }
+.modal-box.modal-box-small { max-width: 360px; }
+.clip-info-desc { line-height: 1.7; margin: 10px 0 0; }
+
+/* --- 理智值 UI 反馈（5.5 节：氛围化呈现，不直接摆数字） --- */
+body.sanity-shaken #app {
+  animation: shakenFlicker 6s infinite;
+}
+body.sanity-breaking #app {
+  animation: breakingFlicker 3s infinite;
+}
+
+@keyframes shakenFlicker {
+  0%, 96%, 100% { filter: none; }
+  97% { filter: contrast(1.1) brightness(0.95); }
+}
+@keyframes breakingFlicker {
+  0%, 90%, 100% { filter: none; }
+  92% { filter: contrast(1.3) brightness(0.8) hue-rotate(5deg); }
+  94% { filter: none; }
+  96% { filter: contrast(1.2) brightness(0.85); }
+}

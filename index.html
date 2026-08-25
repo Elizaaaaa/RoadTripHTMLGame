@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>公路旅行禁止偏航</title>
+<link rel="stylesheet" href="engine/ui.css">
+</head>
+<body>
+  <div id="app">
+    <header id="status-bar">
+      <div class="menu-left">
+        <span class="menu-brand">●</span>
+        <span id="day-display">第 1 天</span>
+      </div>
+      <div class="menu-right">
+        <span id="sanity-display" class="menu-item">理智：清醒</span>
+        <span id="clock-display" class="menu-item">08:00</span>
+        <div class="status-buttons">
+          <button id="btn-review" class="menu-pill">🎬 开始剪辑</button>
+          <button id="btn-notebook" class="menu-pill">📓 记事本<span class="notif-dot hidden" id="notebook-dot"></span></button>
+          <button id="btn-tracker" class="menu-pill">📌 主案追踪</button>
+        </div>
+      </div>
+    </header>
+
+    <main id="map-viewport"></main>
+
+    <div id="map-controls">
+      <button id="zoom-in" title="放大">+</button>
+      <button id="zoom-out" title="缩小">&minus;</button>
+    </div>
+  </div>
+
+  <div id="modal-overlay" class="modal-overlay hidden">
+    <div id="modal-box" class="modal-box"></div>
+  </div>
+
+  <!-- 剪辑台里左键点击某段素材弹出的小窗，显示这段素材的内容简介；叠在 #modal-overlay 之上。 -->
+  <div id="clip-info-overlay" class="modal-overlay clip-info-overlay hidden">
+    <div id="clip-info-box" class="modal-box modal-box-small"></div>
+  </div>
+
+  <div id="toast" class="hidden"></div>
+
+  <script type="module" src="engine/main.js"></script>
+</body>
+</html>

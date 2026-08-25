@@ -1,0 +1,131 @@
+{
+  "_comment": "示例数据，仅用于跑通引擎流程，非正式剧本。共 2 天，字段结构对应 design-doc.md 第 3/4/5 节。真实故事请照此结构自行扩充 unlockedLocations / events / newspaper / signalPool / reviews，天数不限于 2 天。",
+
+  "meta": {
+    "totalDays": 2
+  },
+
+  "1": {
+    "unlockedLocations": ["square", "library"],
+
+    "events": [
+      {
+        "id": "e1",
+        "day": 1,
+        "time": 600,
+        "loc": "square",
+        "type": "text",
+        "mainline": true,
+        "text": "广场中央的镇史碑上刻满了年份，其中一行被人凿去了，旁边只留下一个模糊的箭头，指向[[干湖|dryLake]]的方向。",
+        "clue": "plaque_note",
+        "sanityCost": 0
+      },
+      {
+        "id": "e2",
+        "day": 1,
+        "time": 630,
+        "loc": "library",
+        "type": "text",
+        "mainline": false,
+        "text": "书架深处传来压低的争执声，隐约听见\"[[违约金|contract_penalty]]\"和\"[[干湖|dryLake]]\"两个词，等你们绕过去时已经没人了。",
+        "clue": "library_note",
+        "sanityCost": 0
+      }
+    ],
+
+    "newspaper": [
+      { "id": "np1", "text": "1998 年地方小报角落里一则不起眼的失踪启事，配图模糊得几乎认不出脸。" }
+    ],
+
+    "signalPool": [
+      { "id": "sig1", "text": "@夜观星象：这地方我好像见过，是不是 M 州边界那个？", "flavor": true, "clue": null },
+      { "id": "sig2", "text": "@匿名用户：建议你们别往镇子深处走了，认真的。", "flavor": true, "clue": null }
+    ],
+
+    "reviews": [
+      {
+        "id": "r1",
+        "day": 1,
+        "req": ["plaque_note"],
+        "title": "关于那个箭头……",
+        "prompt": "把你们觉得有关联的素材，按发生的先后顺序拖到时间轴上剪出来。",
+        "timeline": ["plaque_note", "library_note"],
+        "successText": "剪完你们才后知后觉：碑文上被凿掉年份旁边那个箭头，跟书架后面那句压低的争执，说的好像是同一个地方。",
+        "failText": "剪出来的东西七拼八凑，两人对着预览一脸问号——这几段素材真的有关系吗？",
+        "successTag": "r1_traced",
+        "failTag": "r1_unclear"
+      }
+    ]
+  },
+
+  "2": {
+    "unlockedLocations": ["square", "library", "lake"],
+
+    "events": [
+      {
+        "id": "e3",
+        "day": 2,
+        "time": 560,
+        "loc": "square",
+        "type": "text",
+        "mainline": false,
+        "text": "广场边的长椅上刻满了姓名缩写，像是几十年间无数个无聊下午留下的痕迹，没什么特别的。",
+        "clue": "bench_carvings",
+        "sanityCost": 0
+      },
+      {
+        "id": "e4",
+        "day": 2,
+        "time": 610,
+        "loc": "library",
+        "type": "text",
+        "mainline": true,
+        "text": "账本最后一页，那笔[[违约金|contract_penalty]]的收款人栏写着一个名字——旁边有人用铅笔补了一句：\"他后来就一直待在[[旧教堂|oldChurch]]，没再出来过。\"",
+        "clue": "caretaker_note",
+        "unlocksArchive": ["caretaker"],
+        "sanityCost": 8
+      },
+      {
+        "id": "e9",
+        "day": 2,
+        "loc": "lake",
+        "time": 690,
+        "type": "diceCheck",
+        "mainline": true,
+        "text": "唱诗席后面的地板缝隙里，似乎卡着什么东西……",
+        "diceThreshold": 12,
+        "outcomes": {
+          "critFail": { "text": "你的手被什么东西划破，钻心地疼——但那里什么都没有。", "sanityCost": 8 },
+          "fail": { "text": "你只摸到一把冷灰，什么线索都没找到。", "sanityCost": 0 },
+          "success": { "text": "指尖碰到一枚[[生锈的胸针|brooch]]，边缘刻着几个已经磨平的字母。", "clue": "brooch", "unlocksArchive": ["brooch"] },
+          "critSuccess": { "text": "[[生锈的胸针|brooch]]背面还留着半张没烧完的字条，字迹依然清晰。", "clue": "brooch_full", "sanityCost": -5, "unlocksArchive": ["brooch"] }
+        }
+      }
+    ],
+
+    "newspaper": [
+      { "id": "np2", "text": "论坛老帖里一条几乎没人回复的留言：\"我们家以前在那边有块地……后来不要了。\"" }
+    ],
+
+    "signalPool": [
+      { "id": "sig3", "text": "@夜观星象：等等，我记得这个加油站，我爷爷说他年轻时经过这里，再也没敢走小路……", "flavor": true, "clue": null },
+      { "id": "sig4", "text": "@匿名用户2：你们发的第三段视频背景里，好像有个人影。", "flavor": true, "clue": "bg_figure" }
+    ],
+
+    "reviews": [
+      {
+        "id": "r2",
+        "day": 2,
+        "req": ["library_note", "caretaker_note"],
+        "title": "查那笔违约金",
+        "prompt": "把跟这笔钱有关的素材按时间顺序剪进时间轴，看看它到底指向谁。",
+        "timeline": ["library_note", "caretaker_note"],
+        "successText": "剪完之后你们两个都愣住了——账本上那笔违约金的收款人，后来就一直待在旧教堂，没再出来过。",
+        "failText": "剪出来的顺序对不上号，感觉哪里漏了一步，还是先去多挖点素材吧。",
+        "successTag": "r2_named",
+        "failTag": "r2_loose",
+        "successEffect": { "sanityCost": 4 }
+      }
+    ]
+  }
+}

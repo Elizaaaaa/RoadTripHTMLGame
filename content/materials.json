@@ -1,0 +1,11 @@
+{
+  "_comment": "剪辑复盘用的素材元数据。key 是线索 id（对应 events/outcomes 里的 clue 字段，也就是 state.collectedClues 里存的 id）。label 是在剪辑台'素材库'里显示的短标题；importance 是这段素材的重要程度 —— low/mid/high 三档，决定它被拖上时间轴后那个矩形的长度（见 engine/ui.css 的 .clip-block.imp-*）；desc 是左键点击素材图标弹出的内容简介，一两句话概括这段素材拍到了什么，供玩家判断它跟哪些素材有关联。没在这里登记的线索 id，引擎会兜底显示 id 本身、按 mid 处理、desc 留空，不会报错，但正式内容请每条线索都补全。",
+
+  "plaque_note":    { "label": "镇史碑：被凿掉的年份", "importance": "high", "desc": "广场中央的镇史碑上刻满了年份，其中一行被人凿去了，旁边只留下一个模糊的箭头，指向镇子西侧的方向。" },
+  "library_note":   { "label": "书架后压低的争执声", "importance": "mid",  "desc": "书架深处传来压低的争执声，隐约听见\"违约金\"和\"干湖\"两个词，等你们绕过去时已经没人了。" },
+  "bench_carvings": { "label": "长椅上的姓名缩写", "importance": "low",  "desc": "广场边的长椅上刻满了姓名缩写，像是几十年间无数个无聊下午留下的痕迹，没什么特别的。" },
+  "caretaker_note": { "label": "账本：违约金收款人", "importance": "high", "desc": "旧书馆账本最后一页，那笔违约金的收款人栏写着一个名字——旁边有人用铅笔补了一句：他后来就一直待在旧教堂，没再出来过。" },
+  "brooch":         { "label": "生锈的胸针", "importance": "mid",  "desc": "唱诗席后面的地板缝隙里，指尖碰到一枚生锈的胸针，边缘刻着几个已经磨平的字母。" },
+  "brooch_full":    { "label": "胸针背面的半张字条", "importance": "high", "desc": "胸针背面还留着半张没烧完的字条，字迹依然清晰。" },
+  "bg_figure":      { "label": "背景里那个人影", "importance": "low",  "desc": "有观众留言说，你们发的第三段视频背景里，好像有个人影——回看素材，你们自己也说不清那是什么时候拍进去的。" }
+}

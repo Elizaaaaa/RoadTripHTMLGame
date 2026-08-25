@@ -1,0 +1,43 @@
+{
+  "_comment": "示例档案库数据，非正式剧本。字段结构对应 design-doc.md 第 4.3 节：category 用于档案库分类 tab，unlockedBy 记录解锁来源（keyword_click / event:<id>），linkedMainCase 标记是否计入探索进度（见 5.3 节 progress 计算）。body 内可以继续嵌套 [[显示文字|key]] 语法，形成互相跳转的关系网。地名已按 content/worldbuilding.md 里确认的 canon 改为「白湖镇/干湖」体系，原 fogLake 键改名 dryLake。",
+
+  "dryLake": {
+    "title": "干湖",
+    "category": "地点",
+    "body": "镇子西侧那片如今只剩龟裂盐碱地的干涸湖床——地方志上说这里曾经是一片湖，风大的时候还能刮起呛人的白色粉尘。传说[[旧教堂|oldChurch]]的钟楼后来就半埋在干裂的湖床下，没人说得清是什么时候干涸的。",
+    "unlockedBy": ["keyword_click"],
+    "linkedMainCase": true
+  },
+
+  "oldChurch": {
+    "title": "旧教堂",
+    "category": "地点",
+    "body": "教堂主体毁于一场记录不详的火灾，只剩钟楼露在[[干湖|dryLake]]干裂的湖床上。镇史资料里，[[看守人|caretaker]]是最后一个还坚持去做礼拜的人。",
+    "unlockedBy": ["keyword_click", "event:e4"],
+    "linkedMainCase": true
+  },
+
+  "caretaker": {
+    "title": "看守人",
+    "category": "人物",
+    "body": "镇史资料里唯一留下完整名字的旧居民。旧书馆账本上那笔反复出现、说不清楚的[[违约金|contract_penalty]]，收款人一栏写的正是这个名字。",
+    "unlockedBy": ["event:e4"],
+    "linkedMainCase": true
+  },
+
+  "contract_penalty": {
+    "title": "违约金",
+    "category": "事件",
+    "body": "旧书馆账本里反复出现的一笔款项，用途始终没有写清楚，只在最后一页被人用红笔圈了出来。",
+    "unlockedBy": ["keyword_click"],
+    "linkedMainCase": false
+  },
+
+  "brooch": {
+    "title": "生锈的胸针",
+    "category": "物品",
+    "body": "边缘刻着几个已经磨平的字母，样式和[[看守人|caretaker]]留下的照片对不上号——像是属于另一个从没被提起过的人。",
+    "unlockedBy": ["event:e9"],
+    "linkedMainCase": true
+  }
+}

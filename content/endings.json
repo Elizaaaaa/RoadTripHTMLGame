@@ -1,0 +1,41 @@
+{
+  "_comment": "示例结局文案，非正式剧本。对应 design-doc.md 第 5.3 节的 2x2 矩阵。variants 按 choiceLog 里出现过的 tag 匹配，命中就追加对应文案，用来演示'同结局内文案差异'这个机制；tag 来自剪辑复盘的 successTag/failTag（见 content/days.json 的 reviews 和 engine/review.js），真实结局文案请自行替换并按需增减 variants。",
+
+  "truth_escape": {
+    "condition": "progress >= 70 && sanity >= 60",
+    "title": "带着真相逃出",
+    "text": "车子重新开上公路时，油表灯已经在闪。后视镜里的镇子越来越小，但你们知道，那些拍下来的东西不会再被埋回去了。",
+    "variants": [
+      { "when": "r1_traced", "text": "如果不是你们把碑文和书架后那句争执剪到一起，谁也想不到两者指向同一个地方。" },
+      { "when": "r2_named", "text": "剪出那个名字的那一刻，你们对视了很久，最后还是把那段素材放了进去。" }
+    ]
+  },
+
+  "costly_escape": {
+    "condition": "progress >= 70 && sanity < 60",
+    "title": "逃出了，但代价惨重",
+    "text": "身体离开了小镇，但有些东西没有一起离开。剪辑软件里还留着几段谁都没敢发出去的素材。",
+    "variants": [
+      { "when": "r2_named", "text": "剪出那个名字后播放量确实涨了，只是现在没人再提起过那期视频。" },
+      { "when": "r1_unclear", "text": "剪辑软件里那条没剪明白的时间轴，后来一直没删掉。" }
+    ]
+  },
+
+  "blind_escape": {
+    "condition": "progress < 70 && sanity >= 60",
+    "title": "侥幸逃脱，一无所知",
+    "text": "两人活着开出了那条公路，vlog 却播到一半戛然而止——连你们自己都说不清，到底路过的是个什么地方。",
+    "variants": [
+      { "when": "r1_unclear", "text": "有些素材你们拍到了，却始终没能在时间轴上剪出个所以然。" }
+    ]
+  },
+
+  "trapped": {
+    "condition": "progress < 70 && sanity < 60",
+    "title": "困在小镇",
+    "text": "最后一段素材停在一片雪花噪点里，没有人把它剪完。",
+    "variants": [
+      { "when": "r2_loose", "text": "剪辑台上最后那条时间轴，停在一半，没人再打开过。" }
+    ]
+  }
+}
