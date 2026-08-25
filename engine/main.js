@@ -362,7 +362,7 @@ function openBasecamp() {
 
 function renderBasecampTab(tab) {
   const dayContent = getDayContent();
-  renderWindow('废弃加油站', `
+  renderWindow('加油站', `
     <div class="tabs">
       <button class="tab-btn ${tab === 'newspaper' ? 'active' : ''}" id="tab-btn-newspaper">翻旧报纸</button>
       <button class="tab-btn ${tab === 'publish' ? 'active' : ''}" id="tab-btn-publish">发布 vlog</button>

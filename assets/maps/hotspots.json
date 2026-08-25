@@ -1,17 +1,17 @@
 {
   "mapImage": "/assets/maps/white-lake-map.png",
-  "note": "正式地图（白湖镇，1536x1024 手绘风格地图）。热点坐标按图上标注的建筑图标位置手动拾取（百分比 = 像素/图片宽或高*100），对应图中：CEMETERY→cemetery、THE SINK→theSink、HIGH SCHOOL→highSchool、HOTEL→hotel、RESTAURANT→restaurant、TOWN SQUARE→square、LIBRARY→library、MUSEUM→museum、GAS STATION→gasStation（basecamp）、ALKALI WORKS→alkaliWorks、WHITE LAKE→lake。原占位版里的 clinic/inn/market/chapel/station/lighthouse 六个点位在新地图上没有对应建筑，已删除；其中 chapel 的支线（content/days.json 的 e9、archive.json 的 oldChurch 词条）按设定改挂到 lake 上——archive.json 原文本本就写明旧教堂钟楼\"半埋在干裂的湖床下\"，物理上就在干湖范围内，不需要改文案，只改了 loc 字段。",
+  "note": "正式地图（白湖镇，1536x1024 手绘风格地图）。坐标已用 tools/coord-picker.html 重新精确取点并按最新命名更新：alkaliWorks 显示名改「废弃工厂」（原「制碱厂」）、hotel 改「沙狐旅馆」（原「旅店」）、highSchool 改「旧高中」（原「高中」）、gasStation 显示名简化为「加油站」（type 仍是 basecamp，全局唯一）；原 restaurant 点位改名重定位为 tavern「老约翰酒馆」。lake 点位坐标也已用取点工具重新定位，显示名从「干湖」改成了「白湖」——注意这个名字跟镇名「白湖镇/White Lake」撞了，content/worldbuilding.md canon 表里「干湖 = White Lake Dry Bed」还没跟着改，archive.json 的 dryLake 词条标题也还是「干湖」，如果要统一成「白湖」需要一起改，先记在这里。它是 content/days.json 里 day2 事件 e9 的必经地点（loc: lake），别整个删掉。",
   "hotspots": [
-    { "id": "gasStation",  "name": "废弃加油站", "x": 42.64, "y": 84.47, "type": "basecamp" },
-    { "id": "square",      "name": "中心广场",   "x": 45.90, "y": 60.06, "type": "investigation" },
-    { "id": "library",     "name": "图书馆",     "x": 44.27, "y": 69.82, "type": "investigation" },
-    { "id": "museum",      "name": "博物馆",     "x": 56.97, "y": 69.34, "type": "investigation" },
-    { "id": "hotel",       "name": "旅店",       "x": 59.90, "y": 22.95, "type": "investigation" },
-    { "id": "restaurant",  "name": "餐馆",       "x": 60.87, "y": 26.37, "type": "investigation" },
-    { "id": "highSchool",  "name": "高中",       "x": 71.29, "y": 10.25, "type": "investigation" },
-    { "id": "cemetery",    "name": "墓地",       "x": 33.85, "y": 11.23, "type": "investigation" },
-    { "id": "alkaliWorks", "name": "制碱厂",     "x": 31.25, "y": 45.90, "type": "investigation" },
-    { "id": "theSink",     "name": "大坑",       "x": 45.57, "y": 36.62, "type": "investigation" },
-    { "id": "lake",        "name": "干湖",       "x": 67.06, "y": 43.95, "type": "investigation" }
+    { "id": "gasStation",  "name": "加油站",     "x": 38.38, "y": 84.63, "type": "basecamp" },
+    { "id": "square",      "name": "中心广场",   "x": 48.02, "y": 53.34, "type": "investigation" },
+    { "id": "library",     "name": "图书馆",     "x": 46.25, "y": 67.52, "type": "investigation" },
+    { "id": "museum",      "name": "博物馆",     "x": 56.98, "y": 66.70, "type": "investigation" },
+    { "id": "hotel",       "name": "沙狐旅馆",   "x": 61.38, "y": 20.04, "type": "investigation" },
+    { "id": "tavern",      "name": "老约翰酒馆", "x": 61.01, "y": 34.68, "type": "investigation" },
+    { "id": "highSchool",  "name": "旧高中",     "x": 72.84, "y": 5.58,  "type": "investigation" },
+    { "id": "cemetery",    "name": "墓地",       "x": 33.26, "y": 9.52,  "type": "investigation" },
+    { "id": "alkaliWorks", "name": "废弃工厂",   "x": 34.48, "y": 44.28, "type": "investigation" },
+    { "id": "theSink",     "name": "神秘大坑",   "x": 46.37, "y": 37.69, "type": "investigation" },
+    { "id": "lake",        "name": "白湖",       "x": 80.59, "y": 76.49, "type": "investigation" }
   ]
 }

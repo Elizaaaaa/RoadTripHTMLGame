@@ -128,6 +128,15 @@ html, body {
   will-change: transform;
 }
 
+/* 视口比例跟底图（3:2）不一致时，.map-image 的 object-fit:contain 会在某一轴上留黑边；
+   这个盒子由 map.js 的 layoutImageBox() 精确摆成"图片实际显示的那个矩形"，
+   <img> 和所有 .hotspot 都挂在它下面，百分比坐标才会真的对应图片本身。
+   left/top/width/height 由 JS 用行内样式设置，这里的 0 只是加载完成前的占位。 */
+.map-image-box {
+  position: absolute;
+  top: 0; left: 0;
+}
+
 .map-image {
   width: 100%;
   height: 100%;

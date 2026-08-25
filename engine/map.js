@@ -5,7 +5,7 @@ const MIN_SCALE = 1;
 const MAX_SCALE = 3;
 const CLICK_DRAG_THRESHOLD = 6; // px，小于这个位移判定为点击，否则判定为拖拽平移
 
-let viewportEl, contentEl;
+let viewportEl, contentEl, imageBoxEl, imgEl;
 let hotspotsById = {};      // id -> hotspot 定义（来自 hotspots.json）
 let hotspotEls = new Map(); // id -> DOM 元素
 let onHotspotClick = () => {};
@@ -105,6 +105,38 @@ function touchDist(touches) {
   return Math.hypot(dx, dy);
 }
 
+/**
+ * .map-image 用 object-fit:contain 保持底图原始比例，视口比例跟底图不一致时
+ * 会在某一轴上留出黑边（信封效果）。热点坐标是相对"图片实际显示的那个矩形"算的
+ * 百分比，不能直接拿 %，套在整个视口盒子上——否则视口比例和图片比例（这张地图
+ * 是 1536x1024，3:2）不一致时，黑边会把所有热点一起挤偏。
+ * 这里用 JS 把 .map-image-box 精确摆到 object-fit:contain 实际渲染的那个矩形位置，
+ * <img> 和所有热点都挂在这个盒子下面，百分比就总是相对"图片本身"而不是视口。
+ */
+function layoutImageBox() {
+  if (!imageBoxEl || !imgEl) return;
+  const vw = viewportEl.clientWidth;
+  const vh = viewportEl.clientHeight;
+  const nw = imgEl.naturalWidth;
+  const nh = imgEl.naturalHeight;
+  if (!vw || !vh || !nw || !nh) return; // 视口还没有尺寸，或图片还没加载完，先不摆
+
+  let boxW, boxH;
+  if (vw / vh > nw / nh) {
+    // 视口比图片更"宽"：以视口高度为准，图片左右留黑边
+    boxH = vh;
+    boxW = vh * (nw / nh);
+  } else {
+    // 视口比图片更"高"：以视口宽度为准，图片上下留黑边
+    boxW = vw;
+    boxH = vw * (nh / nw);
+  }
+  imageBoxEl.style.left = `${(vw - boxW) / 2}px`;
+  imageBoxEl.style.top = `${(vh - boxH) / 2}px`;
+  imageBoxEl.style.width = `${boxW}px`;
+  imageBoxEl.style.height = `${boxH}px`;
+}
+
 export function zoomIn() {
   const rect = viewportEl.getBoundingClientRect();
   zoomAt(scale + 0.3, rect.width / 2, rect.height / 2);
@@ -132,11 +164,16 @@ export function init(el, mapData, onClick) {
   contentEl.style.transformOrigin = '0 0';
   viewportEl.appendChild(contentEl);
 
-  const img = document.createElement('img');
-  img.className = 'map-image';
-  img.src = mapData.mapImage;
-  img.draggable = false;
-  contentEl.appendChild(img);
+  imageBoxEl = document.createElement('div');
+  imageBoxEl.className = 'map-image-box';
+  contentEl.appendChild(imageBoxEl);
+
+  imgEl = document.createElement('img');
+  imgEl.className = 'map-image';
+  imgEl.draggable = false;
+  imgEl.onload = layoutImageBox; // 图片是异步加载的，naturalWidth/Height 加载完才有值
+  imgEl.src = mapData.mapImage;
+  imageBoxEl.appendChild(imgEl);
 
   hotspotsById = {};
   hotspotEls = new Map();
@@ -148,12 +185,15 @@ export function init(el, mapData, onClick) {
     marker.style.left = `${hotspot.x}%`;
     marker.style.top = `${hotspot.y}%`;
     marker.innerHTML = `<span class="hotspot-dot"></span><span class="hotspot-label">${hotspot.name}</span>`;
-    contentEl.appendChild(marker);
+    imageBoxEl.appendChild(marker);
     hotspotEls.set(hotspot.id, marker);
   }
 
+  window.addEventListener('resize', layoutImageBox);
+
   setupPanZoom();
   applyTransform();
+  layoutImageBox(); // 万一图片是缓存的、onload 在这之前就已经触发过，这里兜底摆一次
 }
 
 /**
