@@ -59,9 +59,36 @@ async function boot() {
 
   if (state.ending) {
     showEnding(state.ending);
-  } else {
+  } else if (!maybeShowDayIntro()) {
     refreshAll();
   }
+}
+
+/**
+ * 每天开场的旁白（可选）：dayContent.intro 存在且今天还没看过时，开局/换天先弹一个
+ * 纯文本窗口，关掉才能操作地图。用 triggeredEvents 存一个 'intro_d<N>' 伪 id 记录
+ * "看过了"，不为此单独加状态字段。
+ * @returns {boolean} 这次是否弹出了旁白——调用方据此决定要不要自己 refreshAll()，
+ *          弹出的话由旁白的"开始"按钮负责关闭后再 refreshAll()。
+ */
+function maybeShowDayIntro() {
+  const dayContent = getDayContent();
+  const introId = `intro_d${state.day}`;
+  if (!dayContent || !dayContent.intro || state.triggeredEvents.includes(introId)) return false;
+
+  state.triggeredEvents.push(introId);
+  const introHTML = kw.parseKeywords(dayContent.intro, k => archiveSys.isUnlocked(state, k)).replace(/\n/g, '<br>');
+  const body = renderWindow(`第 ${state.day} 天`, `
+    <div class="event-text">${introHTML}</div>
+    <button class="btn" id="btn-intro-continue">开始</button>
+  `);
+  bindKeywordClicks(body);
+  openModal('event');
+  document.getElementById('btn-intro-continue').addEventListener('click', () => {
+    closeModal();
+    refreshAll();
+  });
+  return true;
 }
 
 async function fetchJSON(url) {
@@ -188,6 +215,11 @@ function notifyArchiveUnlock(key) {
   showToast(`📎 记事本已更新：${entry ? entry.title : key}`);
 }
 
+function notifyLocationUnlock(id) {
+  const hotspot = mapSys.getHotspot(id);
+  showToast(`🗺️ 地图已更新：${hotspot ? hotspot.name : id}`);
+}
+
 let toastTimer = null;
 function showToast(text) {
   const el = document.getElementById('toast');
@@ -216,7 +248,8 @@ function onHotspotClick(id) {
 function visitInvestigationSpot(id) {
   const dayContent = getDayContent();
   if (!dayContent) return;
-  if (!(dayContent.unlockedLocations || []).includes(id)) return; // 双重保险，地图上本应已置灰锁定
+  const unlocked = (dayContent.unlockedLocations || []).includes(id) || (state.extraUnlockedLocations || []).includes(id);
+  if (!unlocked) return; // 双重保险，地图上本应已置灰锁定
 
   state.location = id;
   if (!state.visitedToday.includes(id)) state.visitedToday.push(id);
@@ -267,6 +300,15 @@ function applyOutcomeEffects(effect, sourceId) {
   if (effect.unlocksArchive) {
     for (const key of effect.unlocksArchive) {
       if (archiveSys.unlock(state, key, `event:${sourceId}`)) notifyArchiveUnlock(key);
+    }
+  }
+  if (effect.unlocksLocation) {
+    state.extraUnlockedLocations ||= [];
+    for (const id of effect.unlocksLocation) {
+      if (!state.extraUnlockedLocations.includes(id)) {
+        state.extraUnlockedLocations.push(id);
+        notifyLocationUnlock(id);
+      }
     }
   }
 }
@@ -438,6 +480,17 @@ function renderPublishTab(body, dayContent) {
 // ---------- 推日/结局 ----------
 
 function advanceDay() {
+  // 第 1 天特殊规则（草稿约定）：不管是超时还是手动点"下一天"，只要离开第 1 天时
+  // 还没办完沙狐旅馆自助入住（没拿到 room_key 线索），直接强制判为"陷入疯狂"坏结局，
+  // 不进入下一天、不走下面通用的进度×理智矩阵。以后如果别的天也要加类似的即时判定，
+  // 再把这段抽成通用的"提前结局检查"，现在先按第 1 天单独写，避免过度设计。
+  if (state.day === 1 && !state.collectedClues.includes('room_key')) {
+    state.ending = 'night_madness';
+    saveState(state);
+    showEnding('night_madness');
+    return;
+  }
+
   const total = content.days.meta?.totalDays
     || Object.keys(content.days).filter(k => k !== 'meta').length;
 
@@ -458,7 +511,7 @@ function advanceDay() {
   signalSys.resetDaily(state);
   snapshotDay(state); // 记下新一天开始时的存档点，供"重新度过今日"/"回到上一天"用
 
-  refreshAll();
+  if (!maybeShowDayIntro()) refreshAll();
 }
 
 function showEnding(id) {

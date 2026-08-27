@@ -18,7 +18,8 @@ export function createInitialState(day1Content) {
     didFailReturn: false,   // 当天是否因超时未回加油站而"更新失败"
 
     visitedToday: [],       // 当天已去过的调查地点 id 列表（用于地图变暗/打勾）
-    triggeredEvents: [],    // 已触发过的事件 id（全程累计，事件不重复触发）
+    extraUnlockedLocations: [], // 事件里 unlocksLocation 效果动态解锁的调查地点 id（全程累计，叠加在 dayContent.unlockedLocations 之上）
+    triggeredEvents: [],    // 已触发过的事件 id（全程累计，事件不重复触发；day intro 也借用这个数组存 'intro_d<N>' 伪 id）
     collectedClues: [],     // 全程收集到的线索 id
     todayClues: [],         // 当天新收集、尚待发布的线索 id
 

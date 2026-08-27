@@ -8,56 +8,65 @@
   "1": {
     "startMin": 1200,
     "endMin": 1440,
-    "unlockedLocations": ["square", "library"],
+    "unlockedLocations": ["square"],
+
+    "intro": "晚上七点半，仪表盘的低油量警告灯突然亮了起来。QQ让BB查查附近有没有加油站——地图上大多是些没见过名字的小站，只有“白湖镇”这一个还挂着壳牌（Shell）的标志。两人商量了一下，决定冒险开过去加油。\n\n晚上八点，车开进了白湖镇的Shell加油站。站里没开灯，也没有工作人员，加油机看着像是能用，按了半天却没反应。天已经彻底黑透，从加油站望进镇子，能看见一排排亮着灯的房子。眼看油表已经见底，两人决定把车留在这儿，走进镇子里碰碰运气。",
 
     "events": [
       {
         "id": "e1",
         "day": 1,
-        "time": 1215,
+        "time": 1260,
         "loc": "square",
         "type": "text",
         "mainline": true,
-        "text": "广场中央的镇史碑上刻满了年份，其中一行被人凿去了，旁边只留下一个模糊的箭头，指向[[干湖|dryLake]]的方向。",
-        "clue": "plaque_note",
+        "text": "广场中央立着一块巨大的纪念碑，上面挂着庆祝工厂建立35周年的标语。旁边的布告栏上贴着几张传单，其中一张写着：《[[沙狐旅馆|hotel]]全新开业，采用自助模式，方便来往游客》。",
+        "clue": "hotel_flyer",
+        "unlocksArchive": ["hotel"],
+        "unlocksLocation": ["hotel"],
         "sanityCost": 0
       },
       {
         "id": "e2",
         "day": 1,
-        "time": 1300,
-        "loc": "library",
+        "time": 1320,
+        "loc": "square",
         "type": "text",
         "mainline": false,
-        "text": "书架深处传来压低的争执声，隐约听见\"[[违约金|contract_penalty]]\"和\"[[干湖|dryLake]]\"两个词，等你们绕过去时已经没人了。",
-        "clue": "library_note",
+        "text": "布告栏上还能找到更多告示：爱心人士向[[图书馆|library]]捐助了大量小说；[[博物馆|museum]]全新装修，增加了互动装置，还打出“带孩子来体验采矿工人的一天”的口号；8 月 18 日晚，返校季派对将在[[白湖镇高中|highSchool]]的草坪举行。",
+        "clue": "town_flyers",
+        "unlocksArchive": ["library", "museum", "highSchool"],
+        "sanityCost": 0
+      },
+      {
+        "id": "e3",
+        "day": 1,
+        "time": 1320,
+        "loc": "hotel",
+        "type": "text",
+        "mainline": true,
+        "text": "旅馆里没有工作人员，大堂却干净整洁。前台桌上亮着一盏灯，桌面贴着一张纸，讲解如何办理自助入住：从空房间信息卡里任选一张，卡上写着房间介绍和房费，填好个人信息后连同现金一起投进信息箱——记得在投卡之前，先把粘在卡上的房间钥匙取下来。QQ看中了108号房，一间双床大床房（2 queens）。翻了翻口袋，两人身上的现金都不够，决定先回加油站看看 ATM 能不能用，顺便把随身行李拿下车。",
+        "clue": "hotel_checkin_instructions",
+        "sanityCost": 0
+      },
+      {
+        "id": "e4",
+        "day": 1,
+        "time": 1440,
+        "loc": "hotel",
+        "type": "text",
+        "mainline": true,
+        "text": "回到旅馆，按照前台说明办完了自助入住，108 号房间的钥匙被从信息卡上取了下来，攥在手心里。",
+        "clue": "room_key",
         "sanityCost": 0
       }
     ],
 
-    "newspaper": [
-      { "id": "np1", "text": "1998 年地方小报角落里一则不起眼的失踪启事，配图模糊得几乎认不出脸。" }
-    ],
+    "newspaper": [],
 
-    "signalPool": [
-      { "id": "sig1", "text": "@夜观星象：这地方我好像见过，是不是 M 州边界那个？", "flavor": true, "clue": null },
-      { "id": "sig2", "text": "@匿名用户：建议你们别往镇子深处走了，认真的。", "flavor": true, "clue": null }
-    ],
+    "signalPool": [],
 
-    "reviews": [
-      {
-        "id": "r1",
-        "day": 1,
-        "req": ["plaque_note"],
-        "title": "关于那个箭头……",
-        "prompt": "把你们觉得有关联的素材，按发生的先后顺序拖到时间轴上剪出来。",
-        "timeline": ["plaque_note", "library_note"],
-        "successText": "剪完你们才后知后觉：碑文上被凿掉年份旁边那个箭头，跟书架后面那句压低的争执，说的好像是同一个地方。",
-        "failText": "剪出来的东西七拼八凑，两人对着预览一脸问号——这几段素材真的有关系吗？",
-        "successTag": "r1_traced",
-        "failTag": "r1_unclear"
-      }
-    ]
+    "reviews": []
   },
 
   "2": {

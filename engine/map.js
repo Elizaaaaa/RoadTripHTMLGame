@@ -202,7 +202,10 @@ export function init(el, mapData, onClick) {
  * mainline（含主线事件）/ current（玩家当前位置）。
  */
 export function updateHotspotStates(state, dayContent) {
-  const unlockedLocs = new Set(dayContent.unlockedLocations || []);
+  const unlockedLocs = new Set([
+    ...(dayContent.unlockedLocations || []),
+    ...(state.extraUnlockedLocations || []) // 事件 unlocksLocation 效果动态解锁的地点，叠加在当天配置之上
+  ]);
   for (const [id, el] of hotspotEls.entries()) {
     const hotspot = hotspotsById[id];
     const unlocked = hotspot.type === 'basecamp' || unlockedLocs.has(id);

@@ -12,5 +12,10 @@
   "sink_shoes_full":{ "label": "坑底的鞋与木牌", "importance": "high", "desc": "那排鞋旁边立着一块小木牌，上面的数字和账本里那笔违约金分毫不差。" },
   "second_brooch":  { "label": "湖床里的另一枚别针", "importance": "mid",  "desc": "湖床边缘新翻出的浮土里，压着半只踩烂的别针，样式和那枚生锈的胸针一模一样。" },
   "grave_match":    { "label": "对得上号的墓碑字母", "importance": "mid",  "desc": "墓地最里面一块几乎磨平的墓碑，残留的字母跟那枚生锈胸针上磨平的字母对得上号。" },
-  "phantom_comment":{ "label": "不是自己发的置顶评论", "importance": "low",  "desc": "最新一条视频评论区置顶的那句话，两人翻遍聊天记录都确认不是自己写的。" }
+  "phantom_comment":{ "label": "不是自己发的置顶评论", "importance": "low",  "desc": "最新一条视频评论区置顶的那句话，两人翻遍聊天记录都确认不是自己写的。" },
+
+  "hotel_flyer":              { "label": "布告栏：沙狐旅馆开业传单", "importance": "mid",  "desc": "中心广场布告栏上的一张传单，介绍沙狐旅馆全新开业、采用自助模式，方便来往游客。" },
+  "town_flyers":               { "label": "布告栏：图书馆/博物馆/返校派对告示", "importance": "low", "desc": "布告栏上另外几张告示：图书馆新到一批捐赠小说、博物馆新增互动装置、8 月 18 日晚返校季派对在旧高中草坪举行。" },
+  "hotel_checkin_instructions":{ "label": "旅馆前台：自助入住说明", "importance": "mid",  "desc": "前台桌上贴的说明纸：挑一张空房间信息卡，填好个人信息，连同现金一起投进信息箱，记得先把钥匙取下来。" },
+  "room_key":                  { "label": "108 号房间钥匙", "importance": "high", "desc": "按自助入住流程办完手续后拿到的钥匙——今晚要是没在天亮前办成这件事，情况就不妙了。" }
 }

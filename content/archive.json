@@ -47,5 +47,37 @@
     "body": "镇子边缘一个来历不明的深坑，坑底整整齐齐摆着一排鞋——像是有人特意留下的，又像是根本没打算再回来取。跟[[干湖|dryLake]]、[[旧教堂|oldChurch]]隔着大半个镇子，看不出地理上有什么关联，但摆放方式莫名相似。",
     "unlockedBy": ["event:e10"],
     "linkedMainCase": true
+  },
+
+  "hotel": {
+    "title": "沙狐旅馆",
+    "category": "地点",
+    "body": "镇子边上新开的旅馆，走的是无人自助模式——没有工作人员，前台一张纸讲解怎么自己挑房间、自己投钱、自己拿钥匙。看着挺新，柜台上落灰倒是不少。",
+    "unlockedBy": ["event:e1"],
+    "linkedMainCase": true
+  },
+
+  "library": {
+    "title": "图书馆",
+    "category": "地点",
+    "body": "布告栏上的告示说，最近有爱心人士捐了一大批小说进来。",
+    "unlockedBy": ["event:e2"],
+    "linkedMainCase": false
+  },
+
+  "museum": {
+    "title": "博物馆",
+    "category": "地点",
+    "body": "刚装修完，加了些互动装置，主打“带孩子体验采矿工人的一天”。",
+    "unlockedBy": ["event:e2"],
+    "linkedMainCase": false
+  },
+
+  "highSchool": {
+    "title": "旧高中",
+    "category": "地点",
+    "body": "布告栏上贴着一张返校季派对的通知，定在 8 月 18 日晚上，地点是学校的草坪。",
+    "unlockedBy": ["event:e2"],
+    "linkedMainCase": false
   }
 }
