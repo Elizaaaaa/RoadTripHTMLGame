@@ -57,6 +57,14 @@
     "linkedMainCase": true
   },
 
+  "room_key": {
+    "title": "108 号房间钥匙",
+    "category": "物品",
+    "body": "在[[沙狐旅馆|hotel]]按自助入住流程办完手续后拿到的钥匙，挂着写有房间号的木牌。",
+    "unlockedBy": ["event:e3"],
+    "linkedMainCase": true
+  },
+
   "library": {
     "title": "图书馆",
     "category": "地点",

@@ -16,6 +16,5 @@
 
   "hotel_flyer":              { "label": "布告栏：沙狐旅馆开业传单", "importance": "mid",  "desc": "中心广场布告栏上的一张传单，介绍沙狐旅馆全新开业、采用自助模式，方便来往游客。" },
   "town_flyers":               { "label": "布告栏：图书馆/博物馆/返校派对告示", "importance": "low", "desc": "布告栏上另外几张告示：图书馆新到一批捐赠小说、博物馆新增互动装置、8 月 18 日晚返校季派对在旧高中草坪举行。" },
-  "hotel_checkin_instructions":{ "label": "旅馆前台：自助入住说明", "importance": "mid",  "desc": "前台桌上贴的说明纸：挑一张空房间信息卡，填好个人信息，连同现金一起投进信息箱，记得先把钥匙取下来。" },
-  "room_key":                  { "label": "108 号房间钥匙", "importance": "high", "desc": "按自助入住流程办完手续后拿到的钥匙——今晚要是没在天亮前办成这件事，情况就不妙了。" }
+  "hotel_checkin_instructions":{ "label": "旅馆前台：自助入住说明", "importance": "mid",  "desc": "前台桌上贴的说明纸：挑一张空房间信息卡，填好个人信息，连同现金一起投进信息箱，记得先把钥匙取下来。" }
 }

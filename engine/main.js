@@ -137,8 +137,9 @@ function updateNotebookDot() {
 
 function openModal(mode) {
   currentModal = mode;
-  // 剪辑台（review）素材库 + 时间轴两块内容并排放，默认弹窗宽度放不下，单独放宽。
-  modalBox.classList.toggle('modal-wide', mode === 'review');
+  // 剪辑台（review 复盘 / publishEdit 加油站发布）素材库 + 时间轴两块内容并排放，
+  // 默认弹窗宽度放不下，单独放宽。
+  modalBox.classList.toggle('modal-wide', mode === 'review' || mode === 'publishEdit');
   document.getElementById('modal-overlay').classList.remove('hidden');
 }
 
@@ -212,12 +213,20 @@ function onKeywordClick(key) {
 
 function notifyArchiveUnlock(key) {
   const entry = archiveSys.getEntry(key);
-  showToast(`📎 记事本已更新：${entry ? entry.title : key}`);
+  // "物品"分类是实打实拿到手的东西（钥匙、胸针……），提示用"获得物品"更贴切；
+  // 其余分类（地点/人物/事件）说的是信息类词条，沿用"记事本已更新"。
+  showToast(entry && entry.category === '物品'
+    ? `🔑 获得物品：${entry.title}`
+    : `📎 记事本已更新：${entry ? entry.title : key}`);
 }
 
 function notifyLocationUnlock(id) {
   const hotspot = mapSys.getHotspot(id);
   showToast(`🗺️ 地图已更新：${hotspot ? hotspot.name : id}`);
+}
+
+function notifyClueGained(clueId) {
+  showToast(`🎞️ 拍到新素材：${reviewSys.getMaterial(clueId).label}`);
 }
 
 let toastTimer = null;
@@ -249,7 +258,7 @@ function visitInvestigationSpot(id) {
   const dayContent = getDayContent();
   if (!dayContent) return;
   const unlocked = (dayContent.unlockedLocations || []).includes(id) || (state.extraUnlockedLocations || []).includes(id);
-  if (!unlocked) return; // 双重保险，地图上本应已置灰锁定
+  if (!unlocked) return; // 双重保险，地图上本应已经不显示这个热点了
 
   state.location = id;
   if (!state.visitedToday.includes(id)) state.visitedToday.push(id);
@@ -280,6 +289,25 @@ function visitInvestigationSpot(id) {
   }
 }
 
+// ---------- 沙狐旅馆：发布之后的"回房休息" → 进入下一天 ----------
+//
+// 加油站剪辑确认发布成功后自动弹出，不需要玩家再跑一趟地图上的旅馆——
+// 用旅馆的名义包一层"回房睡觉"的叙事，实际触发点还是紧跟在发布流程后面。
+// renderPublishTab 的"今天已经发布过了"分支也复用这个弹窗，作为玩家提前
+// 关掉这个窗口之后的补救入口。
+
+function openHotelNight() {
+  renderWindow('沙狐旅馆', `
+    <div class="event-text">今天的素材已经剪好发布了，两人回房间休息，准备迎接明天。</div>
+    <button class="btn" id="btn-hotel-next-day">进入下一天</button>
+  `);
+  openModal('event');
+  document.getElementById('btn-hotel-next-day').addEventListener('click', () => {
+    closeModal();
+    advanceDay();
+  });
+}
+
 function afterInvestigation() {
   refreshAll();
   if (pendingDayOver) {
@@ -288,11 +316,20 @@ function afterInvestigation() {
   }
 }
 
-/** 事件/掷骰结果里共用的效果字段：clue / sanityCost / unlocksArchive。 */
+/**
+ * 事件/掷骰结果里共用的效果字段：clue / clues / sanityCost / unlocksArchive / unlocksLocation。
+ * clue 是单条线索（vlog 素材）的老写法；clues（数组）用于一个事件一次性发放多条线索，
+ * 两个字段可以同时写。注意"线索/素材"（clue，会进剪辑台素材库）和"记事本词条"
+ * （unlocksArchive，含"物品"分类，比如房间钥匙这种实物道具）是两套不同的东西——
+ * 拍到的素材才用 clue，拿到手的道具/解锁的背景资料走 unlocksArchive。
+ */
 function applyOutcomeEffects(effect, sourceId) {
-  if (effect.clue && !state.collectedClues.includes(effect.clue)) {
-    state.collectedClues.push(effect.clue);
-    state.todayClues.push(effect.clue);
+  for (const clue of [effect.clue, ...(effect.clues || [])].filter(Boolean)) {
+    if (!state.collectedClues.includes(clue)) {
+      state.collectedClues.push(clue);
+      state.todayClues.push(clue);
+      notifyClueGained(clue);
+    }
   }
   if (effect.sanityCost) {
     sanitySys.adjust(state, -effect.sanityCost);
@@ -389,6 +426,25 @@ function finishDice(event, result) {
 // ---------- 超时未归 ----------
 
 function handleDayOver() {
+  // 第 1 天特殊规则（草稿约定）：晚上十二点还在镇子里瞎逛、没能在这之前剪辑发布
+  // 并进入下一天，直接被黑暗吞噬判为"陷入疯狂"坏结局，不走下面几天通用的
+  // "未能按时返回"温和惩罚流程。以后如果别的天也要加类似的即时判定，再把这段
+  // 抽成通用的"提前结局检查"，现在先按第 1 天单独写，避免过度设计。
+  if (state.day === 1) {
+    state.ending = 'night_madness';
+    saveState(state);
+    renderWindow('午夜', `
+      <div class="event-text">十二点的钟声敲过，四周的黑忽然浓稠得不像话——两人还没来得及往回走，就被彻底吞了进去。早该赶在十二点前把当天的素材剪出来发布、回旅馆过夜，不该在外面多逗留。</div>
+      <button class="btn" id="btn-continue-madness">继续</button>
+    `);
+    openModal('event');
+    document.getElementById('btn-continue-madness').addEventListener('click', () => {
+      closeModal();
+      showEnding('night_madness');
+    });
+    return;
+  }
+
   publishSys.failReturn(state);
   refreshAll();
   renderWindow('未能按时返回', `
@@ -447,8 +503,10 @@ function renderNewspaperTab(body, dayContent) {
 function renderPublishTab(body, dayContent) {
   const alreadyPublished = state.publishLog.some(p => p.day === state.day && !p.failed);
   if (alreadyPublished) {
-    body.innerHTML = `<p class="hint">今天已经发布过了。</p><button class="btn" id="btn-next-day">进入下一天</button>`;
-    document.getElementById('btn-next-day').addEventListener('click', () => { closeModal(); advanceDay(); });
+    // 正常流程发布成功后会自动弹出旅馆的"进入下一天"窗口；这里是玩家提前把那个
+    // 窗口关掉之后，再翻回发布 tab 时的补救入口。
+    body.innerHTML = `<p class="hint">今天已经发布过了。</p><button class="btn" id="btn-back-to-hotel">回旅馆休息</button>`;
+    document.getElementById('btn-back-to-hotel').addEventListener('click', () => { closeModal(); openHotelNight(); });
     return;
   }
 
@@ -456,41 +514,22 @@ function renderPublishTab(body, dayContent) {
   const digest = signalSys.getDailyDigest(state);
 
   body.innerHTML = `
-    <p class="hint">今日采集到 ${clues.length} 条线索，将一并剪进今天的 vlog。</p>
+    <p class="hint">今日采集到 ${clues.length} 条线索，可以剪进今天的 vlog。</p>
     <ul class="clue-list">${clues.map(c => `<li>${c}</li>`).join('') || '<li class="hint">（今天什么都没拍到）</li>'}</ul>
     ${digest.length ? `
       <div class="signal-digest">
         <div class="hint">今日评论区：</div>
         ${digest.map(s => `<p class="signal-line">${s.text}</p>`).join('')}
       </div>` : ''}
-    <button class="btn" id="btn-do-publish" style="margin-top:10px;">剪辑并发布</button>
+    <button class="btn" id="btn-open-publish-editor" style="margin-top:10px;">剪辑</button>
   `;
 
-  document.getElementById('btn-do-publish').addEventListener('click', () => {
-    const result = publishSys.publish(state, clues);
-    refreshAll();
-    body.innerHTML = `
-      <p class="event-text">发布成功。当晚播放量：<strong>${result.playcount}</strong>${result.glitched ? '（素材出了点问题，效果打了折扣）' : ''}</p>
-      <button class="btn" id="btn-next-day">进入下一天</button>
-    `;
-    document.getElementById('btn-next-day').addEventListener('click', () => { closeModal(); advanceDay(); });
-  });
+  document.getElementById('btn-open-publish-editor').addEventListener('click', () => openPublishEditor(dayContent));
 }
 
 // ---------- 推日/结局 ----------
 
 function advanceDay() {
-  // 第 1 天特殊规则（草稿约定）：不管是超时还是手动点"下一天"，只要离开第 1 天时
-  // 还没办完沙狐旅馆自助入住（没拿到 room_key 线索），直接强制判为"陷入疯狂"坏结局，
-  // 不进入下一天、不走下面通用的进度×理智矩阵。以后如果别的天也要加类似的即时判定，
-  // 再把这段抽成通用的"提前结局检查"，现在先按第 1 天单独写，避免过度设计。
-  if (state.day === 1 && !state.collectedClues.includes('room_key')) {
-    state.ending = 'night_madness';
-    saveState(state);
-    showEnding('night_madness');
-    return;
-  }
-
   const total = content.days.meta?.totalDays
     || Object.keys(content.days).filter(k => k !== 'meta').length;
 
@@ -630,6 +669,26 @@ function renderEditor(review, result) {
 
   if (done) return; // 复盘已成功，锁定这个时间轴，不再允许拖拽/重新提交
 
+  wireClipDragDrop(body, editorTimeline, () => renderEditor(review, null));
+
+  const submitBtn = document.getElementById('btn-editor-submit');
+  if (submitBtn) {
+    submitBtn.addEventListener('click', () => {
+      const res = reviewSys.submit(state, review, editorTimeline);
+      if (res.effect) applyOutcomeEffects(res.effect, review.id);
+      refreshAll();
+      renderEditor(review, res);
+    });
+  }
+}
+
+/**
+ * 素材库 + 时间轴的拖拽交互，"开始剪辑"复盘编辑器和加油站"剪辑"发布编辑器共用。
+ * @param {HTMLElement} body renderWindow 返回的 .mac-body 容器
+ * @param {string[]} timeline 当前时间轴数组，就地增删/重排
+ * @param {()=>void} rerender 时间轴变化后重新渲染整个编辑器的回调
+ */
+function wireClipDragDrop(body, timeline, rerender) {
   body.querySelectorAll('.clip-icon, .clip-block').forEach(el => {
     el.addEventListener('dragstart', e => {
       const payload = el.classList.contains('clip-icon') ? `lib:${el.dataset.clue}` : `tl:${el.dataset.idx}`;
@@ -643,12 +702,12 @@ function renderEditor(review, result) {
   body.querySelectorAll('.clip-block-remove').forEach(btn => {
     btn.addEventListener('click', e => {
       e.stopPropagation();
-      editorTimeline.splice(Number(btn.dataset.idx), 1);
-      renderEditor(review, null);
+      timeline.splice(Number(btn.dataset.idx), 1);
+      rerender();
     });
   });
 
-  const track = document.getElementById('timeline-track');
+  const track = body.querySelector('#timeline-track');
   track.addEventListener('dragover', e => {
     e.preventDefault(); // 必须 preventDefault 才允许 drop
     track.classList.add('drag-over');
@@ -666,24 +725,78 @@ function renderEditor(review, result) {
     const dropIdx = getDropIndex(track, e.clientX);
     if (payload.startsWith('lib:')) {
       const clueId = payload.slice(4);
-      if (!editorTimeline.includes(clueId)) editorTimeline.splice(dropIdx, 0, clueId);
+      if (!timeline.includes(clueId)) timeline.splice(dropIdx, 0, clueId);
     } else if (payload.startsWith('tl:')) {
       const fromIdx = Number(payload.slice(3));
-      const [moved] = editorTimeline.splice(fromIdx, 1);
-      editorTimeline.splice(fromIdx < dropIdx ? dropIdx - 1 : dropIdx, 0, moved);
+      const [moved] = timeline.splice(fromIdx, 1);
+      timeline.splice(fromIdx < dropIdx ? dropIdx - 1 : dropIdx, 0, moved);
     }
-    renderEditor(review, null);
+    rerender();
+  });
+}
+
+// ---------- 加油站：剪辑发布编辑页 ----------
+//
+// "剪辑并发布"一步到位的按钮拆成两步：加油站里点"剪辑"打开一个跟"开始剪辑"
+// 同款的编辑页（素材库 + 时间轴），今天的素材都先摆在素材库里，需要玩家手动
+// 拖到时间轴上，只有在这个编辑页里点"确认发布"才真正结算播放量、写入
+// publishLog——确认发布之后不需要玩家再操作，直接关掉编辑页、弹出旅馆的
+// "进入下一天"窗口（见 openHotelNight），播放量结果走 toast 提示，不再单独占一屏反馈。
+
+let publishEditorTimeline = []; // 加油站剪辑发布编辑页的时间轴，同样不写进存档
+
+function openPublishEditor(dayContent) {
+  publishEditorTimeline = []; // 素材都从素材库开始，需要玩家手动拖到时间轴上
+  renderPublishEditor(dayContent);
+  openModal('publishEdit');
+}
+
+function renderPublishEditor(dayContent) {
+  const libraryIds = state.todayClues.filter(id => !publishEditorTimeline.includes(id));
+
+  const body = renderWindow('剪辑', `
+    <div class="editor">
+      <div class="editor-brief">
+        <div class="event-text">把今天拍到的素材剪进 vlog。</div>
+        <p class="hint">拖拽调整时间轴上的素材，确认后即发布，不能反悔。</p>
+      </div>
+
+      <div class="editor-panel-label">素材库</div>
+      <div class="clip-library" id="clip-library">
+        ${libraryIds.length
+          ? libraryIds.map(clipIconHTML).join('')
+          : '<p class="hint">今天的素材都在时间轴上了。</p>'}
+      </div>
+
+      <div class="editor-panel-label">时间轴</div>
+      <div class="timeline-track" id="timeline-track">
+        ${publishEditorTimeline.length
+          ? publishEditorTimeline.map(clipBlockHTML).join('')
+          : '<div class="timeline-empty">把素材库里的素材拖到这里</div>'}
+      </div>
+
+      <div class="editor-actions">
+        <button class="btn btn-gray" id="btn-editor-close">关闭</button>
+        <button class="btn" id="btn-confirm-publish" ${publishEditorTimeline.length ? '' : 'disabled'}>确认发布</button>
+      </div>
+    </div>
+  `);
+
+  document.getElementById('btn-editor-close').addEventListener('click', closeModal);
+
+  body.querySelectorAll('.clip-icon, .clip-block').forEach(el => {
+    el.addEventListener('click', () => showClipInfo(el.dataset.clue));
   });
 
-  const submitBtn = document.getElementById('btn-editor-submit');
-  if (submitBtn) {
-    submitBtn.addEventListener('click', () => {
-      const res = reviewSys.submit(state, review, editorTimeline);
-      if (res.effect) applyOutcomeEffects(res.effect, review.id);
-      refreshAll();
-      renderEditor(review, res);
-    });
-  }
+  wireClipDragDrop(body, publishEditorTimeline, () => renderPublishEditor(dayContent));
+
+  document.getElementById('btn-confirm-publish').addEventListener('click', () => {
+    const result = publishSys.publish(state, publishEditorTimeline);
+    refreshAll();
+    closeModal();
+    showToast(`🎬 发布成功，当晚播放量：${result.playcount}${result.glitched ? '（素材出了点问题，效果打了折扣）' : ''}`);
+    openHotelNight();
+  });
 }
 
 // ---------- 记事本（原"档案库"，按分类分 tab；旧的纯线索列表版记事本已合并进来）/ 主案追踪 ----------
@@ -790,8 +903,9 @@ function applyTimeRewind(targetDay) {
     return;
   }
   state = restored;
-  pendingDayOver = false; // 回退掉了触发这个标记的那部分进程，避免残留一次假的"超时"判定
-  editorTimeline = [];    // 剪辑台的临时拖拽状态本来就不写进存档，回退后一起清空更保险
+  pendingDayOver = false;     // 回退掉了触发这个标记的那部分进程，避免残留一次假的"超时"判定
+  editorTimeline = [];        // 两个剪辑编辑页的临时拖拽状态本来就不写进存档，回退后一起清空更保险
+  publishEditorTimeline = [];
   closeModal();
   refreshAll();
 }

@@ -180,8 +180,7 @@ html, body {
 }
 
 .hotspot.locked {
-  opacity: 0.3;
-  pointer-events: none;
+  display: none;
 }
 
 .hotspot.visited .hotspot-dot {
