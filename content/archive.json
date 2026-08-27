@@ -39,5 +39,13 @@
     "body": "边缘刻着几个已经磨平的字母，样式和[[看守人|caretaker]]留下的照片对不上号——像是属于另一个从没被提起过的人。",
     "unlockedBy": ["event:e9"],
     "linkedMainCase": true
+  },
+
+  "theSink": {
+    "title": "神秘大坑",
+    "category": "地点",
+    "body": "镇子边缘一个来历不明的深坑，坑底整整齐齐摆着一排鞋——像是有人特意留下的，又像是根本没打算再回来取。跟[[干湖|dryLake]]、[[旧教堂|oldChurch]]隔着大半个镇子，看不出地理上有什么关联，但摆放方式莫名相似。",
+    "unlockedBy": ["event:e10"],
+    "linkedMainCase": true
   }
 }

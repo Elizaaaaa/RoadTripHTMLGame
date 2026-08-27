@@ -3,11 +3,16 @@
 
 const SAVE_KEY = 'roadtrip1_save_v1';
 
-/** 新开一局的初始状态。DAY_START_MIN 由 time.js 定义，这里用字面量避免循环依赖。 */
-export function createInitialState() {
+/**
+ * 新开一局的初始状态。
+ * @param {object} [day1Content] content.days["1"] 的数据，用于读取第 1 天的出发时刻
+ *        （startMin，见 time.js getDayRange）；不传时兜底为 480（08:00）。
+ */
+export function createInitialState(day1Content) {
+  const startMin = day1Content && typeof day1Content.startMin === 'number' ? day1Content.startMin : 480;
   return {
     day: 1,
-    minutes: 480,          // 当天已过去的分钟数（8:00 = 480），见 time.js
+    minutes: startMin,     // 当天已过去的分钟数，第 1 天默认从 20:00（1200）开始，见 content/days.json 与 time.js
     location: 'gasStation', // 当前所在热点 id，永远从加油站出发
     sanity: 100,            // 理智值，全程累积不重置，见 sanity.js
     didFailReturn: false,   // 当天是否因超时未回加油站而"更新失败"
@@ -30,8 +35,43 @@ export function createInitialState() {
     diceLog: [],             // 掷骰记录：{ eventId, day, rolls, chosen, outcome }
     publishLog: [],          // 每天的发布结算：{ day, playcount, clues } 或 { day, failed:true }
 
-    ending: null             // 游戏结束后写入结局 id，写入后视为游戏已结束
+    ending: null,            // 游戏结束后写入结局 id，写入后视为游戏已结束
+
+    dayCheckpoints: {}      // { 天数: 当天开始时的状态快照 }，供"重新度过今日"/"回到上一天"使用，见下方三个函数
   };
+}
+
+/**
+ * 记录"当天开始时"的一份状态快照，存进 state.dayCheckpoints[state.day]。
+ * 调用时机：新开一局记第 1 天、每次 advanceDay() 推进到新的一天时都要记一次。
+ * 快照本身不包含 dayCheckpoints 字段（避免自我嵌套、存档体积滚雪球）。
+ */
+export function snapshotDay(state) {
+  const { dayCheckpoints, ...rest } = state;
+  const snapshot = JSON.parse(JSON.stringify(rest));
+  state.dayCheckpoints = { ...(dayCheckpoints || {}), [state.day]: snapshot };
+}
+
+export function hasDayCheckpoint(state, day) {
+  return !!(state.dayCheckpoints && state.dayCheckpoints[day]);
+}
+
+/**
+ * 恢复到某天开始时的快照——"重新度过今日"传当前天数，"回到上一天"传 day-1。
+ * 目标天之后的快照会被一并丢弃：一旦从某天重新出发，之后的进程就此改写，
+ * 旧快照（哪怕玩家之前已经打到过第 3 天）不再代表这条时间线，留着只会误导回退操作。
+ * @returns {object|null} 恢复后可直接替换 main.js 里 state 变量的新状态；
+ *          没有对应快照时返回 null（调用方应保持现状、提示玩家没有可回退的存档点）。
+ */
+export function restoreDayCheckpoint(state, day) {
+  const cp = state.dayCheckpoints && state.dayCheckpoints[day];
+  if (!cp) return null;
+  const restored = JSON.parse(JSON.stringify(cp));
+  restored.dayCheckpoints = {};
+  for (const [d, snap] of Object.entries(state.dayCheckpoints)) {
+    if (Number(d) <= day) restored.dayCheckpoints[d] = snap;
+  }
+  return restored;
 }
 
 export function loadState() {

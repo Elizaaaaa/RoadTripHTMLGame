@@ -2,6 +2,8 @@
 
 本目录是 `design-doc.md` 第 7 节清单对应的落地结果：一套可复用的 **engine/**，配一份非正式的 **content/** 示例数据，验证"加油站出发 → 探索 → 复盘 → 发布 → 下一天 → 结局"这条主循环能跑通。**没有正式故事文案**——`content/` 里的文字全部标了"占位"或在 `_comment` 字段里写明是示例，你写真实故事时替换这些 JSON 即可，原则上不用改 `engine/` 里的代码。
 
+全流程固定 **3 天**，每天时间窗口不同（配置在 `content/days.json` 每天数据的 `startMin`/`endMin` 字段，见 `engine/time.js`）：第 1 天只有晚上（20:00-24:00），第 2、3 天是全天（08:00-24:00）。
+
 ## 怎么运行
 
 `index.html` 用 `fetch()` 加载 `content/*.json` 和 `assets/maps/hotspots.json`，浏览器出于安全策略会拦截 `file://` 协议下的本地 JSON 请求，所以**不能直接双击 `index.html` 打开**，需要起一个本地静态服务器，例如任选一种：
@@ -22,8 +24,8 @@ npx serve .
 design-doc.md          设计基准文档（唯一真源，改设计先改这里）
 index.html             页面骨架 + 状态栏/地图容器/弹窗容器，不含具体文案
 engine/                 引擎代码，通用规则，不写死任何故事内容
-  state.js              全局状态结构定义 + 存档/读档（localStorage）
-  time.js               时间系统：分钟计时钟、单日预算、超时判定
+  state.js              全局状态结构定义 + 存档/读档（localStorage）+ 每天存档点快照/回退（"重新度过今日"/"回到上一天"）
+  time.js               时间系统：分钟计时钟、每天时间窗口（按天配置起止分钟）、超时判定
   map.js                 图片地图：百分比坐标热点渲染、缩放/平移、点击交互
   signal.js              信号闪现：被动随机弹留言，池子来自当天 content
   basecamp.js            加油站专属准入规则（翻旧报纸每日一次）
@@ -38,7 +40,7 @@ engine/                 引擎代码，通用规则，不写死任何故事内�
   ui.css                  引擎侧通用界面样式（含理智值氛围反馈动效）
 content/                 示例数据，非正式剧本，改这里不用碰 engine/
   worldbuilding.md         已确认的世界观命名 canon（镇名/地名/公司名），写正式文案前先看这个
-  days.json               2 天示例：地点开放表、事件、掷骰事件、信号池、复盘、旧报纸
+  days.json               3 天示例：地点开放表、事件、掷骰事件、信号池、复盘、旧报纸、每天时间窗口
   archive.json             示例档案库词条（含嵌套 [[]] 互跳、unlockedBy、linkedMainCase）
   endings.json             4 个结局的占位文案 + choiceLog 文案变体示例
 assets/maps/
@@ -57,20 +59,22 @@ _legacy-reference/        重构前参照的旧原型（另一个故事，仅供
 ## 内容结构速览（改故事只用改这几份 JSON）
 
 - **`assets/maps/hotspots.json`**：`x`/`y` 是百分比坐标（0-100），`type` 只能是 `"basecamp"`（唯一，加油站）或 `"investigation"`。想换地图就把 `mapImage` 指到你自己的图，热点用 `tools/coord-picker.html`（见上一节）重新量一遍。
-- **`content/days.json`**：按天数字符串做 key（`"1"`、`"2"`……），`meta.totalDays` 决定跑几天后进入结局判定。每天包含：
+- **`content/days.json`**：按天数字符串做 key（`"1"`、`"2"`、`"3"`），`meta.totalDays` 决定跑几天后进入结局判定（当前固定 3 天）。每天包含：
+  - `startMin`/`endMin`：当天的时间窗口（分钟数，0:00=0），决定 `clock-display` 起始值和"超时未归"的判定点；不写则各自兜底 480(08:00)/1200(20:00)，见 `engine/time.js`
   - `unlockedLocations`：当天地图上哪些 investigation 热点是解锁的（加油站永远解锁，不用列）
   - `events`：普通文本事件（`type:"text"`）或掷骰事件（`type:"diceCheck"`，需要 `diceThreshold` + `outcomes.{critFail,fail,success,critSuccess}`），`loc` 对应热点 id，`mainline` 标记是否主线，`clue`/`sanityCost`/`unlocksArchive` 都是可选字段
   - `newspaper`：加油站"翻旧报纸"能看到的内容，每天一次
   - `signalPool`：信号闪现的候选池，被动小概率触发
   - `reviews`：复盘，`req` 是需要先采集到的 `clue` id 数组，`options[].tag` 会写进 `choiceLog`，供结局文案变体匹配
 - **`content/archive.json`**：`category` 随便定义（地点/人物/事件/物品……），`linkedMainCase:true` 的词条才计入探索进度（5.3 节 progress），`unlockedBy` 目前只是给你自己看的注释，引擎侧任何途径调用 `archive.unlock()` 都算数，不校验来源。
-- **`content/endings.json`**：4 个结局 key 固定为 `truth_escape`/`costly_escape`/`blind_escape`/`trapped`，对应 design-doc.md 5.3 节矩阵；`variants[].when` 对应 `choiceLog` 里的 `tag`，命中就把 `text` 追加在结局正文后面。
+- **`content/endings.json`**：当前代码里还是旧模型的 4 个结局 key（`truth_escape`/`costly_escape`/`blind_escape`/`trapped`，对应旧的"探索进度×San值 2x2 矩阵"）；`variants[].when` 对应 `choiceLog` 里的 `tag`，命中就把 `text` 追加在结局正文后面。**待更新**：设计已确认改成 3 个结局的新模型（San 值熔断/进度不够 → 结局①，进度达标后由高潮关键抉择二选一给出结局②/③），见 design-doc.md 5.3 节；`engine/ending.js` 和这份 JSON 都还没跟着改，等正式故事大纲到位后一起重构。
 
 ## 跑过的验证
 
 - 手动过了一遍 DOM id 对照（`index.html` 静态 id vs `main.js` 动态生成 id），没有对不上的。
 - 用 Node 直接跑了一遍 `engine/` 的纯逻辑模块（跳过 `map.js`/`main.js` 里依赖浏览器 DOM 的部分），拿真实的 `content/*.json` 数据模拟了两天完整流程：文本事件、掷骰事件三档取骰规则、信号闪现命中率、关键词解锁（含嵌套跳转）、复盘前置条件、加油站翻报纸/发布、超时惩罚、结局矩阵四个象限——68 项断言全部通过。
 - 用本地静态服务器起了一遍，确认 `index.html`/`engine/*.js`/`content/*.json`/`assets/maps/*` 全部能被正常请求到（200）。
+- **3 天时间窗口改版**（第 1 天 20:00-24:00、第 2/3 天 08:00-24:00）：所有 `content/*.json` 过了一遍 `JSON.parse` 校验；单独跑了 `time.js`/`state.js` 的边界断言——第 1 天初始时钟 20:00、走 2 次(180 分钟)未到 24:00、走第 3 次即判定超时，第 2/3 天重置到 08:00 且能连续走 10 次才到超时点——全部通过。新增的第 3 天示例内容（`theSink`/`cemetery` 两个地点、1 个掷骰事件、2 个文本事件、1 个复盘）尚未跑完整的浏览器端手动通关，改动故事文案或调整这部分时建议自己再点一遍。
 
 框架阶段没有覆盖到、故意先放着的点：
 - 复盘只做了"选一个选项"这一种形式，原型参考里的"判断对错/排序"题型没有照搬——design-doc.md 对复盘的要求本身就是"记录关键选择供结局文案分支"，没有要求特定题型，所以先按最简单的够用实现来，你要更复杂的题型可以在 `review.js` 上加。

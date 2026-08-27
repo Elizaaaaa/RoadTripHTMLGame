@@ -1,18 +1,20 @@
 {
-  "_comment": "示例数据，仅用于跑通引擎流程，非正式剧本。共 2 天，字段结构对应 design-doc.md 第 3/4/5 节。真实故事请照此结构自行扩充 unlockedLocations / events / newspaper / signalPool / reviews，天数不限于 2 天。",
+  "_comment": "示例数据，仅用于跑通引擎流程，非正式剧本。共 3 天，字段结构对应 design-doc.md 第 2/3/4/5 节。全程时间窗口不再是同一个常量：第 1 天只有晚上（startMin=1200/20:00 ~ endMin=1440/24:00），第 2、3 天是全天（startMin=480/08:00 ~ endMin=1440/24:00），每天的 startMin/endMin 字段见下方，由 engine/time.js 读取。真实故事请照此结构自行扩充 unlockedLocations / events / newspaper / signalPool / reviews。",
 
   "meta": {
-    "totalDays": 2
+    "totalDays": 3
   },
 
   "1": {
+    "startMin": 1200,
+    "endMin": 1440,
     "unlockedLocations": ["square", "library"],
 
     "events": [
       {
         "id": "e1",
         "day": 1,
-        "time": 600,
+        "time": 1215,
         "loc": "square",
         "type": "text",
         "mainline": true,
@@ -23,7 +25,7 @@
       {
         "id": "e2",
         "day": 1,
-        "time": 630,
+        "time": 1300,
         "loc": "library",
         "type": "text",
         "mainline": false,
@@ -59,6 +61,8 @@
   },
 
   "2": {
+    "startMin": 480,
+    "endMin": 1440,
     "unlockedLocations": ["square", "library", "lake"],
 
     "events": [
@@ -125,6 +129,78 @@
         "successTag": "r2_named",
         "failTag": "r2_loose",
         "successEffect": { "sanityCost": 4 }
+      }
+    ]
+  },
+
+  "3": {
+    "startMin": 480,
+    "endMin": 1440,
+    "unlockedLocations": ["square", "library", "lake", "cemetery", "theSink"],
+
+    "events": [
+      {
+        "id": "e10",
+        "day": 3,
+        "time": 520,
+        "loc": "theSink",
+        "type": "diceCheck",
+        "mainline": true,
+        "text": "大坑边缘的碎石早就松动了，手机手电的光刚好扫过坑底一角，好像堆着什么规则的形状……",
+        "diceThreshold": 13,
+        "outcomes": {
+          "critFail": { "text": "脚下一滑，两人一起滑进浮土里，呛得睁不开眼——什么都没看清，手电也摔裂了。", "sanityCost": 10 },
+          "fail": { "text": "手电的光够不到坑底，只能先放弃。", "sanityCost": 0 },
+          "success": { "text": "借着一次反光，你们认出坑底堆着的是一整排鞋，样式新旧不一，摆得整整齐齐。", "clue": "sink_shoes", "unlocksArchive": ["theSink"] },
+          "critSuccess": { "text": "那排鞋旁边还立着一块小木牌，上面的数字和账本里那笔[[违约金|contract_penalty]]分毫不差。", "clue": "sink_shoes_full", "sanityCost": -5, "unlocksArchive": ["theSink"] }
+        }
+      },
+      {
+        "id": "e11",
+        "day": 3,
+        "time": 610,
+        "loc": "lake",
+        "type": "text",
+        "mainline": true,
+        "text": "湖床边缘新翻出的浮土里，还压着半只踩烂的别针，样式和那枚[[生锈的胸针|brooch]]一模一样——看来[[看守人|caretaker]]不是唯一一个到过这里的人。",
+        "clue": "second_brooch",
+        "sanityCost": 6
+      },
+      {
+        "id": "e12",
+        "day": 3,
+        "time": 660,
+        "loc": "cemetery",
+        "type": "text",
+        "mainline": false,
+        "text": "墓地最里面那排墓碑大半连名字都被磨平了，只有一块还依稀能认出几个字母，跟[[生锈的胸针|brooch]]上磨平的那几个字母对得上号。",
+        "clue": "grave_match",
+        "sanityCost": 0
+      }
+    ],
+
+    "newspaper": [
+      { "id": "np3", "text": "最早提醒你们的那个论坛账号，主页除了那几条留言之外再没发过别的东西，注册时间是七年前。" }
+    ],
+
+    "signalPool": [
+      { "id": "sig5", "text": "@夜观星象：我说真的，你们现在待的地方，我爷爷从来不肯细说——现在就往回走还来得及。", "flavor": true, "clue": null },
+      { "id": "sig6", "text": "@匿名用户3：你们最新那条视频，评论区置顶的那条不是我发的。", "flavor": true, "clue": "phantom_comment" }
+    ],
+
+    "reviews": [
+      {
+        "id": "r3",
+        "day": 3,
+        "req": ["sink_shoes", "second_brooch", "grave_match"],
+        "title": "坑底的鞋，和另一枚别针",
+        "prompt": "把大坑、湖床、墓地这几段素材按你们想到的关联剪一遍，看看能不能拼出个说法。",
+        "timeline": ["sink_shoes", "second_brooch", "grave_match"],
+        "successText": "剪完你们都沉默了——那不是一个人的事，坑底那排鞋、湖床里的别针、墓碑上磨平的字母，说的是同一群消失的人。",
+        "failText": "素材太散，剪出来的顺序总觉得差着一口气，说不清到底想表达什么。",
+        "successTag": "r3_confirmed",
+        "failTag": "r3_lost",
+        "successEffect": { "sanityCost": 6 }
       }
     ]
   }

@@ -14,7 +14,10 @@ import * as publishSys from './publish.js';
 import * as signalSys from './signal.js';
 import * as basecampSys from './basecamp.js';
 import * as endingSys from './ending.js';
-import { createInitialState, loadState, saveState, clearSave } from './state.js';
+import {
+  createInitialState, loadState, saveState, clearSave,
+  snapshotDay, hasDayCheckpoint, restoreDayCheckpoint
+} from './state.js';
 
 let state;
 let content = {};      // { days, archive, endings }
@@ -44,7 +47,11 @@ async function boot() {
 
   archiveSys.init(content.archive);
   reviewSys.init(content.materials);
-  state = loadState() || createInitialState();
+  const loaded = loadState();
+  state = loaded || createInitialState(content.days['1']);
+  // 新开一局要记第 1 天的存档点；读到的是旧格式存档（还没有 dayCheckpoints）时，
+  // 退而求其次地把"读档这一刻"记成当天的存档点，好过完全不能用"重新度过今日"。
+  if (!hasDayCheckpoint(state, state.day)) snapshotDay(state);
 
   mapSys.init(document.getElementById('map-viewport'), mapData, onHotspotClick);
   wireStatusButtons();
@@ -213,7 +220,7 @@ function visitInvestigationSpot(id) {
 
   state.location = id;
   if (!state.visitedToday.includes(id)) state.visitedToday.push(id);
-  pendingDayOver = timeSys.addMinutes(state, timeSys.TRAVEL_TIME_MIN);
+  pendingDayOver = timeSys.addMinutes(state, timeSys.TRAVEL_TIME_MIN, dayContent);
 
   // 信号闪现：每次探索调查地点都额外判定一次，见 design-doc.md 3.3 节
   const shownIds = state.signalToday.map(s => s.id);
@@ -444,11 +451,12 @@ function advanceDay() {
 
   state.day += 1;
   state.location = 'gasStation';
-  timeSys.resetToday(state);
+  timeSys.resetToday(state, content.days[String(state.day)]);
   state.visitedToday = [];
   state.todayClues = [];
   state.usedNewspaperToday = false;
   signalSys.resetDaily(state);
+  snapshotDay(state); // 记下新一天开始时的存档点，供"重新度过今日"/"回到上一天"用
 
   refreshAll();
 }
@@ -463,7 +471,7 @@ function showEnding(id) {
   openModal('ending');
   document.getElementById('btn-restart').addEventListener('click', () => {
     clearSave();
-    state = createInitialState();
+    state = createInitialState(content.days['1']);
     closeModal();
     refreshAll();
   });
@@ -700,12 +708,48 @@ function openTracker() {
   document.getElementById('btn-close-plain').addEventListener('click', closeModal);
 }
 
+// ---------- 时间线：重新度过今日 / 回到上一天 ----------
+//
+// 依赖 state.js 的 dayCheckpoints：新开一局记第 1 天、每次 advanceDay() 都会记一次
+// "当天开始时"的快照。这里只是把恢复动作接到 UI 上，不做业务判断。
+
+function openTimeControl() {
+  const canRedo = hasDayCheckpoint(state, state.day);
+  const canGoBack = state.day > 1 && hasDayCheckpoint(state, state.day - 1);
+  renderWindow('时间线', `
+    <p class="hint">回退会丢掉回退目标之后发生的一切——已采集的线索、理智值变化、发布记录都会跟着一起还原。</p>
+    <button class="btn" id="btn-redo-today" ${canRedo ? '' : 'disabled'}>重新度过今日（第 ${state.day} 天）</button>
+    <button class="btn btn-gray" id="btn-go-back-day" ${canGoBack ? '' : 'disabled'} style="margin-top:8px;">
+      ${state.day > 1 ? `回到上一天（第 ${state.day - 1} 天）` : '回到上一天（第 1 天没有上一天）'}
+    </button>
+    <button class="btn btn-gray" id="btn-close-plain" style="margin-top:8px;">关闭</button>
+  `);
+  openModal('timeControl');
+  if (canRedo) document.getElementById('btn-redo-today').addEventListener('click', () => applyTimeRewind(state.day));
+  if (canGoBack) document.getElementById('btn-go-back-day').addEventListener('click', () => applyTimeRewind(state.day - 1));
+  document.getElementById('btn-close-plain').addEventListener('click', closeModal);
+}
+
+function applyTimeRewind(targetDay) {
+  const restored = restoreDayCheckpoint(state, targetDay);
+  if (!restored) {
+    showToast('没有找到可回退的存档点');
+    return;
+  }
+  state = restored;
+  pendingDayOver = false; // 回退掉了触发这个标记的那部分进程，避免残留一次假的"超时"判定
+  editorTimeline = [];    // 剪辑台的临时拖拽状态本来就不写进存档，回退后一起清空更保险
+  closeModal();
+  refreshAll();
+}
+
 // ---------- 事件绑定 ----------
 
 function wireStatusButtons() {
   document.getElementById('btn-notebook').addEventListener('click', () => openNotebook());
   document.getElementById('btn-tracker').addEventListener('click', openTracker);
   document.getElementById('btn-review').addEventListener('click', openReviewList);
+  document.getElementById('btn-time-control').addEventListener('click', openTimeControl);
 }
 
 function wireMapControls() {

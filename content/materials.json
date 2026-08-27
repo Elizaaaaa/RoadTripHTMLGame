@@ -7,5 +7,10 @@
   "caretaker_note": { "label": "账本：违约金收款人", "importance": "high", "desc": "旧书馆账本最后一页，那笔违约金的收款人栏写着一个名字——旁边有人用铅笔补了一句：他后来就一直待在旧教堂，没再出来过。" },
   "brooch":         { "label": "生锈的胸针", "importance": "mid",  "desc": "唱诗席后面的地板缝隙里，指尖碰到一枚生锈的胸针，边缘刻着几个已经磨平的字母。" },
   "brooch_full":    { "label": "胸针背面的半张字条", "importance": "high", "desc": "胸针背面还留着半张没烧完的字条，字迹依然清晰。" },
-  "bg_figure":      { "label": "背景里那个人影", "importance": "low",  "desc": "有观众留言说，你们发的第三段视频背景里，好像有个人影——回看素材，你们自己也说不清那是什么时候拍进去的。" }
+  "bg_figure":      { "label": "背景里那个人影", "importance": "low",  "desc": "有观众留言说，你们发的第三段视频背景里，好像有个人影——回看素材，你们自己也说不清那是什么时候拍进去的。" },
+  "sink_shoes":     { "label": "坑底那排鞋", "importance": "high", "desc": "大坑边缘的碎石松动后，借着手电反光认出坑底堆着一整排鞋，样式新旧不一，摆得整整齐齐。" },
+  "sink_shoes_full":{ "label": "坑底的鞋与木牌", "importance": "high", "desc": "那排鞋旁边立着一块小木牌，上面的数字和账本里那笔违约金分毫不差。" },
+  "second_brooch":  { "label": "湖床里的另一枚别针", "importance": "mid",  "desc": "湖床边缘新翻出的浮土里，压着半只踩烂的别针，样式和那枚生锈的胸针一模一样。" },
+  "grave_match":    { "label": "对得上号的墓碑字母", "importance": "mid",  "desc": "墓地最里面一块几乎磨平的墓碑，残留的字母跟那枚生锈胸针上磨平的字母对得上号。" },
+  "phantom_comment":{ "label": "不是自己发的置顶评论", "importance": "low",  "desc": "最新一条视频评论区置顶的那句话，两人翻遍聊天记录都确认不是自己写的。" }
 }
