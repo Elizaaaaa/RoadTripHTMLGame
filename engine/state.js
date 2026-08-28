@@ -3,7 +3,7 @@
 
 // 版本号在每次改动后递增：旧存档会挂在旧 key 下面，读不到就自动当新档处理，
 // 不需要玩家手动清 localStorage 就能获得一次"从头开始"的测试。
-const SAVE_KEY = 'roadtrip1_save_v15';
+const SAVE_KEY = 'roadtrip1_save_v16';
 
 /**
  * 新开一局的初始状态。

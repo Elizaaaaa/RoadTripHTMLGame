@@ -850,17 +850,87 @@ function wireClipDragDrop(body, timeline, rerender) {
   track.addEventListener('drop', e => {
     e.preventDefault();
     track.classList.remove('drag-over');
-    const payload = e.dataTransfer.getData('text/plain');
-    const dropIdx = getDropIndex(track, e.clientX);
-    if (payload.startsWith('lib:')) {
-      const clueId = payload.slice(4);
-      if (!timeline.includes(clueId)) timeline.splice(dropIdx, 0, clueId);
-    } else if (payload.startsWith('tl:')) {
-      const fromIdx = Number(payload.slice(3));
-      const [moved] = timeline.splice(fromIdx, 1);
-      timeline.splice(fromIdx < dropIdx ? dropIdx - 1 : dropIdx, 0, moved);
-    }
+    applyClipDrop(e.dataTransfer.getData('text/plain'), track, e.clientX, timeline);
     rerender();
+  });
+
+  wireClipTouchDrag(body, track, timeline, rerender);
+}
+
+/** dragover/drop（鼠标）和 touchend（触屏）落点算法共用：payload 决定是从素材库拿一个还是在时间轴内挪动。 */
+function applyClipDrop(payload, track, clientX, timeline) {
+  const dropIdx = getDropIndex(track, clientX);
+  if (payload.startsWith('lib:')) {
+    const clueId = payload.slice(4);
+    if (!timeline.includes(clueId)) timeline.splice(dropIdx, 0, clueId);
+  } else if (payload.startsWith('tl:')) {
+    const fromIdx = Number(payload.slice(3));
+    const [moved] = timeline.splice(fromIdx, 1);
+    timeline.splice(fromIdx < dropIdx ? dropIdx - 1 : dropIdx, 0, moved);
+  }
+}
+
+/**
+ * 手机浏览器基本不触发原生 HTML5 拖拽事件（dragstart/dragover/drop），所以另外接一套
+ * touch 事件手动实现同样的效果：手指按住素材移动超过一点距离就判定为"开始拖拽"，
+ * 用一个跟手指走的浮动副本（ghost）做视觉反馈，松手时用当前坐标复用 applyClipDrop 落位。
+ * 没有明显移动的轻触仍然只触发普通 click（打开素材简介），不受影响。
+ */
+function wireClipTouchDrag(body, track, timeline, rerender) {
+  const DRAG_THRESHOLD = 8; // px，超过这个距离才算开始拖拽，避免误吞正常的点击
+
+  body.querySelectorAll('.clip-icon, .clip-block').forEach(el => {
+    let startX = 0, startY = 0, dragging = false, ghost = null;
+
+    const cleanup = () => {
+      if (ghost) { ghost.remove(); ghost = null; }
+      el.classList.remove('dragging');
+      track.classList.remove('drag-over');
+      dragging = false;
+    };
+
+    el.addEventListener('touchstart', e => {
+      if (e.touches.length !== 1) return;
+      startX = e.touches[0].clientX;
+      startY = e.touches[0].clientY;
+      dragging = false;
+    }, { passive: true });
+
+    el.addEventListener('touchmove', e => {
+      if (e.touches.length !== 1) return;
+      const t = e.touches[0];
+      if (!dragging) {
+        if (Math.abs(t.clientX - startX) < DRAG_THRESHOLD && Math.abs(t.clientY - startY) < DRAG_THRESHOLD) return;
+        dragging = true;
+        el.classList.add('dragging');
+        ghost = el.cloneNode(true);
+        ghost.classList.remove('dragging');
+        ghost.classList.add('clip-drag-ghost');
+        ghost.style.width = `${el.getBoundingClientRect().width}px`;
+        document.body.appendChild(ghost);
+      }
+      e.preventDefault(); // 拖拽过程中不让页面跟着滚
+      ghost.style.left = `${t.clientX}px`;
+      ghost.style.top = `${t.clientY}px`;
+      const over = document.elementFromPoint(t.clientX, t.clientY);
+      track.classList.toggle('drag-over', !!(over && track.contains(over)));
+    }, { passive: false });
+
+    el.addEventListener('touchend', e => {
+      if (!dragging) return;
+      const t = e.changedTouches[0];
+      const over = document.elementFromPoint(t.clientX, t.clientY);
+      if (over && track.contains(over)) {
+        const payload = el.classList.contains('clip-icon') ? `lib:${el.dataset.clue}` : `tl:${el.dataset.idx}`;
+        applyClipDrop(payload, track, t.clientX, timeline);
+        cleanup();
+        rerender();
+        return;
+      }
+      cleanup();
+    });
+
+    el.addEventListener('touchcancel', cleanup);
   });
 }
 

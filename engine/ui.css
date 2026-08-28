@@ -606,6 +606,7 @@ button:disabled:hover, .btn:disabled:hover { background: rgba(255, 255, 255, 0.0
   cursor: grab;
   text-align: center;
   user-select: none;
+  touch-action: none; /* 手指按住就直接进入拖拽判定，不让浏览器把这个手势当成页面滚动 */
 }
 .clip-icon:hover { border-color: var(--accent-2); background: rgba(255, 255, 255, 0.08); }
 .clip-icon.dragging { opacity: 0.35; }
@@ -657,8 +658,19 @@ button:disabled:hover, .btn:disabled:hover { background: rgba(255, 255, 255, 0.0
   cursor: grab;
   white-space: nowrap;
   overflow: hidden;
+  touch-action: none;
 }
 .clip-block.dragging { opacity: 0.35; }
+
+/* 触屏拖拽时跟着手指走的浮动副本，鼠标端的原生拖拽不会用到这个 */
+.clip-drag-ghost {
+  position: fixed;
+  z-index: 10000;
+  pointer-events: none;
+  opacity: 0.85;
+  transform: translate(-50%, -50%);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.4);
+}
 .clip-block-label { overflow: hidden; text-overflow: ellipsis; }
 .clip-block.imp-low  { width: 64px; }
 .clip-block.imp-mid  { width: 110px; }
