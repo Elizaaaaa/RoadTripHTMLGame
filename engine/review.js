@@ -1,6 +1,8 @@
-// review.js —— 剪辑复盘：玩家在"剪辑台"UI 里把素材库中的素材拖到时间轴上、
-// 按认为正确的顺序排好，即为一次复盘。对应 design-doc.md 第 3 节 + 5.3 节最后一条：
-// 结果不决定结局分支，只记录进 choiceLog，用于同一结局内的文案差异化。
+// review.js —— 剪辑顺序判定：玩家在剪辑编辑器（顶部"开始剪辑"菜单按钮、加油站
+// "剪辑" tab 两个入口共用同一个编辑器，见 engine/main.js 的 renderPublishEditor）
+// 里把素材库中的素材拖到时间轴上、按认为正确的顺序排好，确认发布时顺带判定一次。
+// 对应 design-doc.md 第 3 节 + 5.3 节最后一条：结果不决定结局分支，也不影响播放量
+// （播放量结算见 engine/publish.js），只记录进 choiceLog，用于同一结局内的文案差异化。
 //
 // 数据结构（content/days.json 里 reviews 数组的一项）：
 //   { id, day, req: [clueId], title, prompt,

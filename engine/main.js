@@ -23,7 +23,7 @@ import {
 let state;
 let content = {};      // { days, archive, endings }
 let modalBox;
-let currentModal = null;   // 'event' | 'basecamp' | 'review' | 'notebook' | 'tracker' | 'ending'
+let currentModal = null;   // 'event' | 'basecamp' | 'publishEdit' | 'notebook' | 'tracker' | 'ending'
 let notebookTab = null;    // 记事本当前选中的分类 tab（跨重渲染保持选中）
 let pendingDayOver = false;
 
@@ -138,9 +138,8 @@ function updateNotebookDot() {
 
 function openModal(mode) {
   currentModal = mode;
-  // 剪辑台（review 复盘 / publishEdit 加油站发布）素材库 + 时间轴两块内容并排放，
-  // 默认弹窗宽度放不下，单独放宽。
-  modalBox.classList.toggle('modal-wide', mode === 'review' || mode === 'publishEdit');
+  // 剪辑编辑器（publishEdit）素材库 + 时间轴两块内容并排放，默认弹窗宽度放不下，单独放宽。
+  modalBox.classList.toggle('modal-wide', mode === 'publishEdit');
   document.getElementById('modal-overlay').classList.remove('hidden');
 }
 
@@ -698,29 +697,10 @@ function showEnding(id) {
   });
 }
 
-// ---------- 开始剪辑（剪辑台复盘）----------
+// ---------- 剪辑编辑器共用素材展示 helper ----------
 //
-// 简易"剪辑软件"界面：左侧素材库摆出全部已收集素材（视频素材图标 + 重要度 低/中/高
-// 标签），玩家把自己认为有关联的素材拖到下方时间轴上、按顺序排好；每块素材落到
-// 时间轴上会变成一段长方形，长度由该素材的重要度决定。顺序、内容都对上 review.timeline
-// 才算复盘成功。editorTimeline 是纯前端的临时编辑状态，不写进存档——复盘没做完就关掉
-// 窗口的话，下次打开会从空时间轴重新开始拖。
-
-let editorTimeline = []; // 当前剪辑台时间轴上的线索 id，按摆放顺序排列
-
-function openReviewList() {
-  const dayContent = getDayContent();
-  const available = reviewSys.getAvailable(state, dayContent ? dayContent.reviews : []);
-  if (available.length === 0) {
-    renderWindow('开始剪辑', `<p class="hint">今天的素材还凑不出一条能剪的时间轴，先去多拍点素材。</p><button class="btn btn-gray" id="btn-close-plain">关闭</button>`);
-    openModal('review');
-    document.getElementById('btn-close-plain').addEventListener('click', closeModal);
-    return;
-  }
-  editorTimeline = [];
-  renderEditor(available[0], null); // 框架阶段简化：直接打开第一个可用复盘
-  openModal('review');
-}
+// 素材库图标 / 时间轴长方形 / 拖放判定，供剪辑编辑器（加油站"剪辑" tab、顶部菜单
+// "开始剪辑"两个入口，最终都是同一个编辑器，见后面 openClipEditor/openPublishEditor）使用。
 
 function importanceLabel(importance) {
   return { low: '低', mid: '中', high: '高' }[importance] || '中';
@@ -755,64 +735,8 @@ function getDropIndex(track, clientX) {
   return blocks.length;
 }
 
-function renderEditor(review, result) {
-  const done = !!(result && result.success);
-  const libraryIds = state.collectedClues.filter(id => !editorTimeline.includes(id));
-
-  const body = renderWindow('开始剪辑', `
-    <div class="editor">
-      <div class="editor-brief">
-        <div class="event-text">${review.title}</div>
-        <p class="hint">${review.prompt}</p>
-      </div>
-
-      <div class="editor-panel-label">素材库</div>
-      <div class="clip-library" id="clip-library">
-        ${libraryIds.length
-          ? libraryIds.map(clipIconHTML).join('')
-          : '<p class="hint">素材库空了，能用的素材都在时间轴上了。</p>'}
-      </div>
-
-      <div class="editor-panel-label">时间轴</div>
-      <div class="timeline-track" id="timeline-track">
-        ${editorTimeline.length
-          ? editorTimeline.map(clipBlockHTML).join('')
-          : '<div class="timeline-empty">把素材库里的素材拖到这里，按顺序摆好</div>'}
-      </div>
-
-      ${result ? `<div class="editor-feedback ${done ? 'feedback-ok' : 'feedback-bad'}">${result.text}</div>` : ''}
-
-      <div class="editor-actions">
-        <button class="btn btn-gray" id="btn-editor-close">${done ? '完成' : '关闭'}</button>
-        ${done ? '' : `<button class="btn" id="btn-editor-submit" ${editorTimeline.length ? '' : 'disabled'}>完成剪辑</button>`}
-      </div>
-    </div>
-  `);
-
-  document.getElementById('btn-editor-close').addEventListener('click', closeModal);
-
-  // 左键点开某段素材的内容简介，跟拖拽/锁定状态无关，随时都能看。
-  body.querySelectorAll('.clip-icon, .clip-block').forEach(el => {
-    el.addEventListener('click', () => showClipInfo(el.dataset.clue));
-  });
-
-  if (done) return; // 复盘已成功，锁定这个时间轴，不再允许拖拽/重新提交
-
-  wireClipDragDrop(body, editorTimeline, () => renderEditor(review, null));
-
-  const submitBtn = document.getElementById('btn-editor-submit');
-  if (submitBtn) {
-    submitBtn.addEventListener('click', () => {
-      const res = reviewSys.submit(state, review, editorTimeline);
-      if (res.effect) applyOutcomeEffects(res.effect);
-      refreshAll();
-      renderEditor(review, res);
-    });
-  }
-}
-
 /**
- * 素材库 + 时间轴的拖拽交互，"开始剪辑"复盘编辑器和加油站"剪辑"发布编辑器共用。
+ * 素材库 + 时间轴的拖拽交互，供剪辑编辑器（renderPublishEditor）使用。
  * @param {HTMLElement} body renderWindow 返回的 .mac-body 容器
  * @param {string[]} timeline 当前时间轴数组，就地增删/重排
  * @param {()=>void} rerender 时间轴变化后重新渲染整个编辑器的回调
@@ -934,23 +858,47 @@ function wireClipTouchDrag(body, track, timeline, rerender) {
   });
 }
 
-// ---------- 加油站：剪辑发布编辑页 ----------
+// ---------- 剪辑编辑器：加油站"剪辑" tab + 顶部"开始剪辑"共用入口 ----------
 //
-// "剪辑并发布"一步到位的按钮拆成两步：加油站里点"剪辑"打开一个跟"开始剪辑"
-// 同款的编辑页（素材库 + 时间轴），今天的素材都先摆在素材库里，需要玩家手动
-// 拖到时间轴上，只有在这个编辑页里点"确认发布"才真正结算播放量、写入
-// publishLog——确认发布之后不需要玩家再操作，直接关掉编辑页、弹出旅馆的
-// "进入下一天"窗口（见 openHotelNight），播放量结果走 toast 提示，不再单独占一屏反馈。
+// 两个入口最终打开的是同一个编辑页（素材库 + 时间轴）、走的是同一次"确认发布"：
+// 今天的素材（state.todayClues）先摆在素材库里，玩家手动拖到时间轴上，点
+// "确认发布"才真正结算播放量、写入 publishLog，一天只能发布一次。如果
+// content/days.json 给当天配置了 reviews（结构见 review.js 顶部注释），确认发布时
+// 会顺带用 reviewSys 判定玩家摆的顺序对不对，在编辑页里追加一段成功/失败反馈——
+// 这个判定不影响播放量，只影响 choiceLog、用于同一结局内的文案分支；没配置
+// reviews 的天数（比如第 1 天）就跟以前一样，确认即走，没有对错这一步。反馈展示
+// 完，玩家点"完成"再关掉编辑页、弹出旅馆的"进入下一天"窗口（见 openHotelNight）；
+// 没有反馈要展示的话，确认发布后直接关闭走这一步，播放量结果走 toast 提示。
 
-let publishEditorTimeline = []; // 加油站剪辑发布编辑页的时间轴，同样不写进存档
+let publishEditorTimeline = []; // 剪辑编辑页的时间轴，纯前端临时编辑状态，不写进存档
+
+/** 顶部菜单"开始剪辑"入口：跟加油站里点"剪辑"打开的是同一个编辑器。 */
+function openClipEditor() {
+  const dayContent = getDayContent();
+  if (!dayContent) return;
+  const alreadyPublished = state.publishLog.some(p => p.day === state.day && !p.failed);
+  if (alreadyPublished) {
+    renderWindow('剪辑', `<p class="hint">今天已经发布过了。</p><button class="btn" id="btn-back-to-hotel">回旅馆休息</button>`);
+    openModal('publishEdit');
+    document.getElementById('btn-back-to-hotel').addEventListener('click', () => { closeModal(); openHotelNight(); });
+    return;
+  }
+  openPublishEditor(dayContent);
+}
 
 function openPublishEditor(dayContent) {
   publishEditorTimeline = []; // 素材都从素材库开始，需要玩家手动拖到时间轴上
-  renderPublishEditor(dayContent);
+  renderPublishEditor(dayContent, null);
   openModal('publishEdit');
 }
 
-function renderPublishEditor(dayContent) {
+/**
+ * @param {object} dayContent
+ * @param {{success:boolean,text:string}|null} result 确认发布后的复盘判定结果；
+ *        当天没配置 reviews、或还没点确认发布时是 null。非 null 时编辑页锁定为反馈态。
+ */
+function renderPublishEditor(dayContent, result) {
+  const done = !!result;
   const libraryIds = state.todayClues.filter(id => !publishEditorTimeline.includes(id));
 
   const body = renderWindow('剪辑', `
@@ -974,27 +922,44 @@ function renderPublishEditor(dayContent) {
           : '<div class="timeline-empty">把素材库里的素材拖到这里</div>'}
       </div>
 
+      ${result ? `<div class="editor-feedback ${result.success ? 'feedback-ok' : 'feedback-bad'}">${result.text}</div>` : ''}
+
       <div class="editor-actions">
-        <button class="btn btn-gray" id="btn-editor-close">关闭</button>
-        <button class="btn" id="btn-confirm-publish" ${publishEditorTimeline.length ? '' : 'disabled'}>确认发布</button>
+        <button class="btn btn-gray" id="btn-editor-close">${done ? '完成' : '关闭'}</button>
+        ${done ? '' : `<button class="btn" id="btn-confirm-publish" ${publishEditorTimeline.length ? '' : 'disabled'}>确认发布</button>`}
       </div>
     </div>
   `);
 
-  document.getElementById('btn-editor-close').addEventListener('click', closeModal);
+  document.getElementById('btn-editor-close').addEventListener('click', () => {
+    closeModal();
+    if (done) openHotelNight();
+  });
 
   body.querySelectorAll('.clip-icon, .clip-block').forEach(el => {
     el.addEventListener('click', () => showClipInfo(el.dataset.clue));
   });
 
-  wireClipDragDrop(body, publishEditorTimeline, () => renderPublishEditor(dayContent));
+  if (done) return; // 已经确认发布，锁定时间轴，不再允许拖拽/重复提交
+
+  wireClipDragDrop(body, publishEditorTimeline, () => renderPublishEditor(dayContent, null));
 
   document.getElementById('btn-confirm-publish').addEventListener('click', () => {
-    const result = publishSys.publish(state, publishEditorTimeline);
+    // 当天配置了 reviews 的话，先按玩家实际摆的顺序判定一次对错（不影响播放量）。
+    const review = reviewSys.getAvailable(state, dayContent.reviews || [])[0] || null;
+    const reviewResult = review ? reviewSys.submit(state, review, publishEditorTimeline) : null;
+    if (reviewResult && reviewResult.effect) applyOutcomeEffects(reviewResult.effect);
+
+    const pubResult = publishSys.publish(state, publishEditorTimeline);
     refreshAll();
-    closeModal();
-    showToast(`🎬 发布成功，当晚播放量：${result.playcount}${result.glitched ? '（素材出了点问题，效果打了折扣）' : ''}`);
-    openHotelNight();
+    showToast(`🎬 发布成功，当晚播放量：${pubResult.playcount}${pubResult.glitched ? '（素材出了点问题，效果打了折扣）' : ''}`);
+
+    if (reviewResult) {
+      renderPublishEditor(dayContent, reviewResult); // 停在编辑页展示对错反馈，玩家点"完成"再进旅馆流程
+    } else {
+      closeModal();
+      openHotelNight();
+    }
   });
 }
 
@@ -1116,8 +1081,7 @@ function applyTimeRewind(targetDay) {
   }
   state = restored;
   pendingDayOver = false;     // 回退掉了触发这个标记的那部分进程，避免残留一次假的"超时"判定
-  editorTimeline = [];        // 两个剪辑编辑页的临时拖拽状态本来就不写进存档，回退后一起清空更保险
-  publishEditorTimeline = [];
+  publishEditorTimeline = []; // 剪辑编辑页的临时拖拽状态本来就不写进存档，回退后清空更保险
   closeModal();
   refreshAll();
 }
@@ -1127,7 +1091,7 @@ function applyTimeRewind(targetDay) {
 function wireStatusButtons() {
   document.getElementById('btn-notebook').addEventListener('click', () => openNotebook());
   document.getElementById('btn-tracker').addEventListener('click', openTracker);
-  document.getElementById('btn-review').addEventListener('click', openReviewList);
+  document.getElementById('btn-review').addEventListener('click', openClipEditor);
   document.getElementById('btn-time-control').addEventListener('click', openTimeControl);
 }
 
