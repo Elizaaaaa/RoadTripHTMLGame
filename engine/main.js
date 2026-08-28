@@ -12,6 +12,7 @@ import * as archiveSys from './archive.js';
 import * as reviewSys from './review.js';
 import * as publishSys from './publish.js';
 import * as signalSys from './signal.js';
+import * as dialogueSys from './dialogue.js';
 import * as basecampSys from './basecamp.js';
 import * as endingSys from './ending.js';
 import {
@@ -149,6 +150,7 @@ function closeModal() {
   modalBox.classList.remove('modal-wide');
   currentModal = null;
   closeClipInfo(); // 保险起见：主窗口关掉时，叠在它上面的素材简介小窗也一并收掉
+  clearDialogueBubbles(); // 同上：QQ/BB 对话气泡（以及还没播完的定时器）也一并清掉
 }
 
 /** 剪辑台里左键点开某段素材，弹出一个小窗显示它的内容简介，叠在剪辑台窗口之上。 */
@@ -387,15 +389,12 @@ function recordEventLog(event, text, note) {
 
 function showTextEvent(event) {
   applyOutcomeEffects(event);
-  recordEventLog(event, event.text);
-  const bodyHTML = kw.parseKeywords(event.text, k => archiveSys.isUnlocked(state, k));
-  const body = renderWindow('事件记录', `
-    <div class="event-text">${bodyHTML}</div>
-    <button class="btn" id="btn-event-continue">继续</button>
-  `);
-  bindKeywordClicks(body);
+  recordEventLog(event, event.text); // 调查回顾用原始整段文本，不受下面的分页影响，见 openTracker
   openModal('event');
-  document.getElementById('btn-event-continue').addEventListener('click', () => {
+  playEventPages(event.id, splitSegments(event.text), pageHTML => renderWindow('事件记录', `
+    <div class="event-text">${pageHTML}</div>
+    <button class="btn" id="btn-event-continue">继续</button>
+  `), () => {
     closeModal();
     afterInvestigation();
   });
@@ -443,19 +442,120 @@ function finishDice(event, result) {
   const rollLine = result.rollInfo
     ? `掷出 [${result.rollInfo.rolls.join(', ')}]，取 ${result.rollInfo.chosen}（判定：${result.outcomeKey}）`
     : '（未掷骰——主动选择承受代价）';
-  recordEventLog(event, result.outcome.text, rollLine);
-  const outcomeHTML = kw.parseKeywords(result.outcome.text, k => archiveSys.isUnlocked(state, k));
+  recordEventLog(event, result.outcome.text, rollLine); // 调查回顾用原始整段文本，不受下面的分页影响
 
-  const body = renderWindow('事件记录', `
+  playEventPages(event.id, splitSegments(result.outcome.text), pageHTML => renderWindow('事件记录', `
     <div class="hint">${rollLine}</div>
-    <div class="event-text">${outcomeHTML}</div>
+    <div class="event-text">${pageHTML}</div>
     <button class="btn" id="btn-event-continue">继续</button>
-  `);
-  bindKeywordClicks(body);
-  document.getElementById('btn-event-continue').addEventListener('click', () => {
+  `), () => {
     closeModal();
     afterInvestigation();
   });
+}
+
+// ---------- 事件正文分页 ----------
+//
+// 事件正文（events[].text / diceCheck 的 outcome.text）按 \n 拆成几"页"：内容作者
+// 写草稿时主动换行分段，一段太长的叙述就不用挤在同一屏——每页一个"继续"，翻到最后
+// 一页才真正关窗、结束这次调查。调查回顾（openTracker）用的是 recordEventLog 存的
+// 原始整段文本，不受这里的分页影响，还是照旧整段显示。
+
+/** 按换行拆分正文，丢掉纯空白的行（对应作者手滑打的空行）；结果始终至少有一页。 */
+function splitSegments(text) {
+  const segments = (text || '').split('\n').filter(s => s.trim().length > 0);
+  return segments.length ? segments : [''];
+}
+
+/**
+ * 通用"多页事件正文"播放器。renderPage(pageHTML) 由调用方决定整个弹窗内容长什么样
+ * （标题、掷骰提示等），返回 .mac-body 元素，这里负责绑关键词点击和"继续"按钮；
+ * bindKeywordClicks 内部按容器去重，重复调用不会重复绑定。翻到最后一页再点"继续"
+ * 才会触发 onFinish（真正关窗，走 afterInvestigation）。每页翻页前要不要等 QQ/BB
+ * 讨论完，见 maybePlayDialogue/dialogue.js 的 afterSegment。
+ */
+function playEventPages(eventId, segments, renderPage, onFinish) {
+  let idx = 0;
+  const showPage = () => {
+    const html = kw.parseKeywords(segments[idx], k => archiveSys.isUnlocked(state, k));
+    const body = renderPage(html);
+    bindKeywordClicks(body);
+    document.getElementById('btn-event-continue').addEventListener('click', () => {
+      if (idx < segments.length - 1) {
+        idx += 1;
+        showPage();
+      } else {
+        onFinish();
+      }
+    });
+    maybePlayDialogue(eventId, idx, segments.length);
+  };
+  showPage();
+}
+
+// ---------- QQ/BB 事件后闲聊 ----------
+//
+// 见 dialogue.js：跟事件 id（+ 第几页）绑定，翻到那一页、准备点"继续"之前，如果
+// 绑了一段对话，就锁住"继续"按钮、在屏幕左右两侧逐条弹气泡播完，播完才解锁。
+// 气泡本身不在 modalBox 里（modalBox 内容一直没变），是叠在弹窗之上的独立浮层，
+// 所以事件正文和"讨论中"的气泡能同时看见。
+
+const DIALOGUE_STEP_MS = 1300; // 每条气泡之间的间隔
+const DIALOGUE_HOLD_MS = 900;  // 最后一条气泡弹出后，停留多久才判定"讨论完了"
+
+let dialogueTimers = [];
+
+/** 事件/掷骰某一页的"继续"按钮渲染完之后调用：查到绑在这一页后面的对话就锁按钮、播完再解锁。 */
+function maybePlayDialogue(eventId, segmentIndex, totalSegments) {
+  const dialogue = dialogueSys.findForEvent(getDayContent(), eventId, segmentIndex, totalSegments);
+  if (!dialogue) return;
+  const btn = document.getElementById('btn-event-continue');
+  if (!btn) return;
+  btn.disabled = true;
+  const hint = document.createElement('p');
+  hint.className = 'hint dlg-wait-hint';
+  hint.textContent = 'QQ 和 BB 正在讨论……';
+  btn.insertAdjacentElement('beforebegin', hint);
+  playDialogue(dialogue, () => {
+    btn.disabled = false;
+    hint.remove();
+  });
+}
+
+function playDialogue(dialogue, onDone) {
+  clearDialogueBubbles();
+  const overlay = document.getElementById('dialogue-overlay');
+  if (!overlay) { onDone(); return; }
+  overlay.classList.remove('hidden');
+  const lines = dialogue.lines || [];
+  lines.forEach((line, i) => {
+    dialogueTimers.push(setTimeout(() => appendDialogueBubble(line), i * DIALOGUE_STEP_MS));
+  });
+  const totalMs = Math.max(0, lines.length - 1) * DIALOGUE_STEP_MS + DIALOGUE_HOLD_MS;
+  dialogueTimers.push(setTimeout(onDone, totalMs));
+}
+
+function appendDialogueBubble(line) {
+  const isQQ = line.speaker === 'qq';
+  const col = document.getElementById(isQQ ? 'dialogue-col-qq' : 'dialogue-col-bb');
+  if (!col) return;
+  const bubble = document.createElement('div');
+  bubble.className = `dlg-bubble ${isQQ ? 'dlg-bubble-qq' : 'dlg-bubble-bb'}`;
+  const textHTML = kw.parseKeywords(line.text, k => archiveSys.isUnlocked(state, k));
+  bubble.innerHTML = `<span class="dlg-bubble-name">${isQQ ? 'QQ' : 'BB'}</span>${textHTML}`;
+  col.prepend(bubble); // 配合 CSS 的 column-reverse：新气泡插在最前面 = 视觉上出现在最底部，旧气泡整体上移
+  bindKeywordClicks(bubble);
+}
+
+/** 清掉还没播完的定时器 + 已经弹出的气泡，closeModal() 和重新播放前都会调一次。 */
+function clearDialogueBubbles() {
+  dialogueTimers.forEach(clearTimeout);
+  dialogueTimers = [];
+  const overlay = document.getElementById('dialogue-overlay');
+  if (!overlay) return;
+  overlay.classList.add('hidden');
+  document.getElementById('dialogue-col-qq').innerHTML = '';
+  document.getElementById('dialogue-col-bb').innerHTML = '';
 }
 
 // ---------- 超时未归 ----------

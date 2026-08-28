@@ -502,6 +502,69 @@ button:disabled:hover, .btn:disabled:hover { background: rgba(255, 255, 255, 0.0
   to   { opacity: 1; transform: translateY(0); }
 }
 
+/* --- QQ/BB 事件后闲聊：跟事件绑定的对话，浮在弹窗之上、屏幕左右两侧逐条弹气泡。
+   见 engine/dialogue.js + main.js playDialogue()。左列固定给 QQ，右列固定给 BB，
+   两列各自独立累积——column-reverse + 新气泡插到最前面，视觉上新气泡从下面弹出，
+   旧气泡整体被"挤"着往上移，而不是消失。 --- */
+.dialogue-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 150; /* 盖过 modal-overlay(100)，讨论期间事件弹窗仍看得见、按钮锁着 */
+  pointer-events: none;
+}
+
+.dialogue-col {
+  position: fixed;
+  bottom: 90px;
+  display: flex;
+  flex-direction: column-reverse;
+  gap: 8px;
+  max-width: 280px;
+  max-height: 60vh;
+  overflow: hidden;
+  pointer-events: none;
+}
+.dialogue-col-qq { left: 20px; align-items: flex-start; }
+.dialogue-col-bb { right: 20px; align-items: flex-end; }
+
+.dlg-bubble {
+  pointer-events: auto;
+  padding: 8px 12px;
+  border-radius: 14px;
+  font-size: 12.5px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  box-shadow: var(--window-shadow);
+  animation: dlgBubbleIn 0.25s ease-out;
+}
+
+.dlg-bubble-name {
+  display: block;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  opacity: 0.65;
+  margin-bottom: 2px;
+}
+
+.dlg-bubble-qq {
+  background: rgba(var(--accent2-rgb), 0.22);
+  border: 1px solid rgba(var(--accent2-rgb), 0.5);
+  color: #fff;
+  border-bottom-left-radius: 4px;
+}
+.dlg-bubble-bb {
+  background: rgba(var(--accent-rgb), 0.22);
+  border: 1px solid rgba(var(--accent-rgb), 0.5);
+  color: #fff;
+  border-bottom-right-radius: 4px;
+}
+
+@keyframes dlgBubbleIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
 /* --- 开始剪辑：仿简易剪辑软件的复盘 UI（素材库 + 时间轴，拖拽拼顺序） --- */
 .modal-box.modal-wide { max-width: 860px; }
 

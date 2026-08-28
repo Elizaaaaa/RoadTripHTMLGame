@@ -1,5 +1,5 @@
 {
-  "_comment": "示例数据，仅用于跑通引擎流程，非正式剧本。共 3 天，字段结构对应 design-doc.md 第 2/3/4/5 节。全程时间窗口不再是同一个常量：第 1 天只有晚上（startMin=1200/20:00 ~ endMin=1440/24:00），第 2、3 天是全天（startMin=480/08:00 ~ endMin=1440/24:00），每天的 startMin/endMin 字段见下方，由 engine/time.js 读取。真实故事请照此结构自行扩充 unlockedLocations / events / newspaper / signalPool / reviews。",
+  "_comment": "示例数据，仅用于跑通引擎流程，非正式剧本。共 3 天，字段结构对应 design-doc.md 第 2/3/4/5 节。全程时间窗口不再是同一个常量：第 1 天只有晚上（startMin=1200/20:00 ~ endMin=1440/24:00），第 2、3 天是全天（startMin=480/08:00 ~ endMin=1440/24:00），每天的 startMin/endMin 字段见下方，由 engine/time.js 读取。真实故事请照此结构自行扩充 unlockedLocations / events / newspaper / signalPool / reviews / dialogues。events[].text（以及 diceCheck 的 outcomes[].text）里可以写字面换行符 \\n 把长文本拆成几页，玩家每点一次“继续”翻一页，见 engine/main.js 的 splitSegments/playEventPages；调查回顾照旧显示原始整段文本，不受分页影响。dialogues 是 QQ/BB 事件后闲聊，跟 events[].id（+ 可选的第几页 afterSegment，不写默认绑最后一页）绑定，翻到那一页后必定播放（不进 signalPool、不随机、不进当日摘要），格式见 engine/dialogue.js 顶部注释：{ id, afterEvent: 事件id, afterSegment?: 页码, lines: [{ speaker: 'qq'|'bb', text }] }。",
 
   "meta": {
     "totalDays": 3
@@ -45,7 +45,7 @@
         "loc": "hotel",
         "type": "text",
         "mainline": true,
-        "text": "旅馆里没有工作人员，大堂却干净整洁。前台桌上亮着一盏灯，桌面贴着一张纸，讲解如何办理自助入住：从空房间信息卡里任选一张，卡上写着房间介绍和房费，填好个人信息后连同现金一起投进信息箱——记得在投卡之前，先把粘在卡上的房间钥匙取下来。QQ看中了108号房，一间双床大床房（2 queens）。翻了翻口袋，两人凑出来的现金刚好够付房费，填好信息卡塞进信息箱，把粘在卡上的[[108号房间钥匙|room_key]]取了下来，攥在手心里——回头还得去加油站看看 ATM 能不能用，把车上的行李也搬下来。",
+        "text": "旅馆里没有工作人员，大堂却干净整洁。前台桌上亮着一盏灯，桌面贴着一张纸，讲解如何办理自助入住：从空房间信息卡里任选一张，卡上写着房间介绍和房费，填好个人信息后连同现金一起投进信息箱——记得在投卡之前，先把粘在卡上的房间钥匙取下来。\nQQ看中了108号房，一间双床房。翻了翻口袋，两人凑出来的现金刚好够付房费，填好信息卡塞进信息箱，把粘在卡上的[[108号房间钥匙|room_key]]取了下来，攥在手心里——回头还得去加油站看看 ATM 能不能用，把车上的行李也搬下来。",
         "clue": "hotel_checkin_instructions",
         "unlocksArchive": ["room_key"],
         "sanityCost": 0
@@ -55,6 +55,26 @@
     "newspaper": [],
 
     "signalPool": [],
+
+    "dialogues": [
+      {
+        "id": "dlg1",
+        "afterEvent": "e1",
+        "lines": [
+          { "speaker": "qq", "text": "沙狐旅馆……名字取的有点意思，反正总比睡车里强。" },
+          { "speaker": "bb", "text": "自助入住也好，不用跟人多解释我们怎么半夜跑到这种地方来。" }
+        ]
+      },
+      {
+        "id": "dlg2",
+        "afterEvent": "e3",
+        "afterSegment": 0,
+        "lines": [
+          { "speaker": "qq", "text": "这年头开旅馆是有多不想见人啊。" },
+          { "speaker": "bb", "text": "至少不用尴尬地跟前台大眼瞪小眼。" }
+        ]
+      }
+    ],
 
     "reviews": []
   },
@@ -114,6 +134,8 @@
       { "id": "sig3", "text": "@夜观星象：等等，我记得这个加油站，我爷爷说他年轻时经过这里，再也没敢走小路……", "flavor": true, "clue": null },
       { "id": "sig4", "text": "@匿名用户2：你们发的第三段视频背景里，好像有个人影。", "flavor": true, "clue": "bg_figure" }
     ],
+
+    "dialogues": [],
 
     "reviews": [
       {
@@ -186,6 +208,8 @@
       { "id": "sig5", "text": "@夜观星象：我说真的，你们现在待的地方，我爷爷从来不肯细说——现在就往回走还来得及。", "flavor": true, "clue": null },
       { "id": "sig6", "text": "@匿名用户3：你们最新那条视频，评论区置顶的那条不是我发的。", "flavor": true, "clue": "phantom_comment" }
     ],
+
+    "dialogues": [],
 
     "reviews": [
       {

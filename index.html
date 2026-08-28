@@ -42,6 +42,12 @@
     <div id="clip-info-box" class="modal-box modal-box-small"></div>
   </div>
 
+  <!-- QQ/BB 事件后闲聊：跟事件绑定时才出现，左右两侧逐条弹气泡，浮在弹窗之上；见 engine/dialogue.js。 -->
+  <div id="dialogue-overlay" class="dialogue-overlay hidden">
+    <div id="dialogue-col-qq" class="dialogue-col dialogue-col-qq"></div>
+    <div id="dialogue-col-bb" class="dialogue-col dialogue-col-bb"></div>
+  </div>
+
   <div id="toast" class="hidden"></div>
 
   <script type="module" src="engine/main.js"></script>
