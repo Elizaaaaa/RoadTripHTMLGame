@@ -724,3 +724,46 @@ body.sanity-breaking #app {
   94% { filter: none; }
   96% { filter: contrast(1.2) brightness(0.85); }
 }
+
+/* --- 移动端竖屏提示：默认不显示；只在"触屏 + 竖屏"时盖住全部内容，
+   不影响桌面端把浏览器窗口拖窄的情况（pointer: coarse 排除鼠标设备）。
+   纯 CSS 媒体查询驱动，不依赖 JS，页面还没加载完也能生效。 --- */
+#orientation-overlay {
+  display: none;
+}
+
+@media screen and (orientation: portrait) and (pointer: coarse) {
+  #orientation-overlay {
+    display: flex;
+    position: fixed;
+    inset: 0;
+    z-index: 9999;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    padding: 24px;
+    background: var(--bg);
+    text-align: center;
+  }
+}
+
+.orientation-icon {
+  font-size: 48px;
+  animation: orientationRotate 1.6s ease-in-out infinite;
+}
+
+.orientation-text {
+  font-size: 16px;
+  color: var(--text);
+}
+
+.orientation-hint {
+  font-size: 12px;
+  color: #888;
+}
+
+@keyframes orientationRotate {
+  0%, 100% { transform: rotate(0deg); }
+  50% { transform: rotate(90deg); }
+}
