@@ -1,5 +1,5 @@
 {
-  "mapImage": "/assets/maps/white-lake-map.png",
+  "mapImage": "assets/maps/white-lake-map.png",
   "note": "正式地图（白湖镇，1536x1024 手绘风格地图）。坐标已用 tools/coord-picker.html 重新精确取点并按最新命名更新：alkaliWorks 显示名改「废弃工厂」（原「制碱厂」）、hotel 改「沙狐旅馆」（原「旅店」）、highSchool 改「旧高中」（原「高中」）、gasStation 显示名简化为「加油站」（type 仍是 basecamp，全局唯一）；原 restaurant 点位改名重定位为 tavern「老约翰酒馆」。lake 点位坐标也已用取点工具重新定位，显示名从「干湖」改成了「白湖」——注意这个名字跟镇名「白湖镇/White Lake」撞了，content/worldbuilding.md canon 表里「干湖 = White Lake Dry Bed」还没跟着改，archive.json 的 dryLake 词条标题也还是「干湖」，如果要统一成「白湖」需要一起改，先记在这里。它是 content/days.json 里 day2 事件 e9 的必经地点（loc: lake），别整个删掉。",
   "hotspots": [
     { "id": "gasStation",  "name": "加油站",     "x": 38.38, "y": 84.63, "type": "basecamp" },

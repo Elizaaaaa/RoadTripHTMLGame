@@ -174,7 +174,7 @@
   <aside>
     <div class="field-row">
       <span class="hint" style="white-space:nowrap;color:var(--text-dim);">mapImage</span>
-      <input type="text" id="map-image-path" placeholder="/assets/maps/xxx.png">
+      <input type="text" id="map-image-path" placeholder="assets/maps/xxx.png">
     </div>
     <div id="point-list">
       <div id="empty-list-hint">还没有点。在左边地图上点击一下试试——<br>点击 = 新增一个点，拖动已有的点 = 微调位置。</div>
@@ -518,7 +518,7 @@ document.getElementById('btn-clear-points').addEventListener('click', () => {
 // ---------- 导出 ----------
 
 function renderExport() {
-  const mapImage = document.getElementById('map-image-path').value.trim() || '/assets/maps/你的地图.png';
+  const mapImage = document.getElementById('map-image-path').value.trim() || 'assets/maps/你的地图.png';
   const data = {
     mapImage,
     hotspots: points.map(p => ({
