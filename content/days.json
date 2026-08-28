@@ -20,7 +20,7 @@
         "loc": "square",
         "type": "text",
         "mainline": true,
-        "text": "广场中央立着一块巨大的纪念碑，上面挂着庆祝工厂建立35周年的标语。旁边的布告栏上贴着几张传单，其中一张写着：《[[沙狐旅馆|hotel]]全新开业，采用自助模式，方便来往游客》。",
+        "text": "广场中央立着一块巨大的纪念碑，上面挂着庆祝小镇建立80周年的标语。旁边的布告栏上贴着几张传单，其中一张写着：《[[沙狐旅馆|hotel]]全新开业，采用自助模式，方便来往游客》。",
         "clue": "hotel_flyer",
         "unlocksArchive": ["hotel"],
         "unlocksLocation": ["hotel"],
@@ -61,8 +61,8 @@
         "id": "dlg1",
         "afterEvent": "e1",
         "lines": [
-          { "speaker": "qq", "text": "沙狐旅馆……名字取的有点意思，反正总比睡车里强。" },
-          { "speaker": "bb", "text": "自助入住也好，不用跟人多解释我们怎么半夜跑到这种地方来。" }
+          { "speaker": "qq", "text": "自助旅馆，靠不靠谱啊……算了，反正总比睡车里强。" },
+          { "speaker": "bb", "text": "凑合一下吧，沙狐旅馆这个名字还挺有意思。" }
         ]
       },
       {
@@ -71,7 +71,16 @@
         "afterSegment": 0,
         "lines": [
           { "speaker": "qq", "text": "这年头开旅馆是有多不想见人啊。" },
-          { "speaker": "bb", "text": "至少不用尴尬地跟前台大眼瞪小眼。" }
+          { "speaker": "bb", "text": "至少不用尴尬地跟前台寒暄。" }
+        ]
+      },
+      {
+        "id": "dlg3",
+        "afterEvent": "e3",
+        "afterSegment": 1,
+        "lines": [
+          { "speaker": "qq", "text": "别忘了拿钥匙！" },
+          { "speaker": "bb", "text": "嗯……身上好像没现金了。" }
         ]
       }
     ],

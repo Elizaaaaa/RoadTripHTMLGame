@@ -524,7 +524,7 @@ button:disabled:hover, .btn:disabled:hover { background: rgba(255, 255, 255, 0.0
   overflow: hidden;
   pointer-events: none;
 }
-.dialogue-col-qq { left: 20px; align-items: flex-start; }
+.dialogue-col-qq { left: 20px; bottom: 200px; align-items: flex-start; } /* QQ 这列单独调高一点 */
 .dialogue-col-bb { right: 20px; align-items: flex-end; }
 
 .dlg-bubble {
