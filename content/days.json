@@ -45,7 +45,7 @@
         "loc": "hotel",
         "type": "text",
         "mainline": true,
-        "text": "旅馆里没有工作人员，大堂却干净整洁。前台桌上亮着一盏灯，桌面贴着一张纸，讲解如何办理自助入住：从空房间信息卡里任选一张，卡上写着房间介绍和房费，填好个人信息后连同现金一起投进信息箱——记得在投卡之前，先把粘在卡上的房间钥匙取下来。QQ看中了108号房，一间双床大床房（2 queens）。翻了翻口袋，两人凑出来的现金刚好够付房费，填好信息卡塞进信息箱，把粘在卡上的钥匙取了下来，攥在手心里——回头还得去加油站看看 ATM 能不能用，把车上的行李也搬下来。",
+        "text": "旅馆里没有工作人员，大堂却干净整洁。前台桌上亮着一盏灯，桌面贴着一张纸，讲解如何办理自助入住：从空房间信息卡里任选一张，卡上写着房间介绍和房费，填好个人信息后连同现金一起投进信息箱——记得在投卡之前，先把粘在卡上的房间钥匙取下来。QQ看中了108号房，一间双床大床房（2 queens）。翻了翻口袋，两人凑出来的现金刚好够付房费，填好信息卡塞进信息箱，把粘在卡上的[[108号房间钥匙|room_key]]取了下来，攥在手心里——回头还得去加油站看看 ATM 能不能用，把车上的行李也搬下来。",
         "clue": "hotel_checkin_instructions",
         "unlocksArchive": ["room_key"],
         "sanityCost": 0
@@ -83,7 +83,7 @@
         "loc": "library",
         "type": "text",
         "mainline": true,
-        "text": "账本最后一页，那笔[[违约金|contract_penalty]]的收款人栏写着一个名字——旁边有人用铅笔补了一句：\"他后来就一直待在[[旧教堂|oldChurch]]，没再出来过。\"",
+        "text": "账本最后一页，那笔[[违约金|contract_penalty]]的收款人栏写着一个名字——翻了翻镇史资料才对上号，那是本地[[看守人|caretaker]]的名字。旁边有人用铅笔补了一句：\"他后来就一直待在[[旧教堂|oldChurch]]，没再出来过。\"",
         "clue": "caretaker_note",
         "unlocksArchive": ["caretaker"],
         "sanityCost": 8
@@ -150,8 +150,8 @@
         "outcomes": {
           "critFail": { "text": "脚下一滑，两人一起滑进浮土里，呛得睁不开眼——什么都没看清，手电也摔裂了。", "sanityCost": 10 },
           "fail": { "text": "手电的光够不到坑底，只能先放弃。", "sanityCost": 0 },
-          "success": { "text": "借着一次反光，你们认出坑底堆着的是一整排鞋，样式新旧不一，摆得整整齐齐。", "clue": "sink_shoes", "unlocksArchive": ["theSink"] },
-          "critSuccess": { "text": "那排鞋旁边还立着一块小木牌，上面的数字和账本里那笔[[违约金|contract_penalty]]分毫不差。", "clue": "sink_shoes_full", "sanityCost": -5, "unlocksArchive": ["theSink"] }
+          "success": { "text": "借着一次反光，你们看清了[[神秘大坑|theSink]]坑底堆着的是一整排鞋，样式新旧不一，摆得整整齐齐。", "clue": "sink_shoes", "unlocksArchive": ["theSink"] },
+          "critSuccess": { "text": "[[神秘大坑|theSink]]那排鞋旁边还立着一块小木牌，上面的数字和账本里那笔[[违约金|contract_penalty]]分毫不差。", "clue": "sink_shoes_full", "sanityCost": -5, "unlocksArchive": ["theSink"] }
         }
       },
       {

@@ -427,6 +427,9 @@ button:disabled:hover, .btn:disabled:hover { background: rgba(255, 255, 255, 0.0
 .progress-bar { background: rgba(255,255,255,0.08); height: 8px; border-radius: 4px; overflow: hidden; margin: 12px 0; }
 .progress-fill { height: 100%; background: rgba(var(--accent-rgb), 0.95); }
 
+/* 调查回顾：当天按调查顺序排列的事件记录列表，进度条留在滚动区域外面固定显示在最上方 */
+.tracker-log { max-height: 55vh; overflow-y: auto; padding-right: 4px; }
+
 /* 记事本：仿 Notes.app 的侧栏(分类) + 内容区两栏布局 */
 .mac-split { display: flex; gap: 16px; align-items: flex-start; }
 .mac-sidebar {
@@ -465,10 +468,12 @@ button:disabled:hover, .btn:disabled:hover { background: rgba(255, 255, 255, 0.0
 
 .ending-title { font-size: 1.4em; color: var(--accent); margin-bottom: 10px; }
 
-/* 关键词高亮：已解锁常亮，未解锁灰底虚线提示"可深挖" */
-.kw { cursor: pointer; }
-.kw-unlocked { color: var(--accent-2); text-decoration: underline; }
-.kw-locked { background: rgba(255,255,255,0.08); border-bottom: 1px dashed #888; }
+/* 关键词高亮：未收集显示蓝色链接（提示"点它"），点击收集词条后变灰（仿"访问过的链接"）。
+   class 名沿用 kw-locked/kw-unlocked（对应 archive.isUnlocked 状态，JS 不用改），
+   只是这里把视觉反过来映射：未解锁(kw-locked)=蓝色可点，已解锁(kw-unlocked)=灰色已读。 */
+.kw { cursor: pointer; text-decoration: underline; }
+.kw-locked { color: var(--accent-2); }
+.kw-unlocked { color: #888; }
 
 /* --- Toast：仿 macOS 通知中心右上角横幅 --- */
 #toast {

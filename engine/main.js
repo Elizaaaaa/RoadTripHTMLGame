@@ -205,9 +205,14 @@ function bindKeywordClicks(container) {
   kw.attachKeywordHandlers(container, onKeywordClick);
 }
 
-function onKeywordClick(key) {
+function onKeywordClick(key, spanEl) {
   const isNew = archiveSys.unlock(state, key, 'keyword_click');
   if (isNew) notifyArchiveUnlock(key);
+  // 立刻把点过的这个 span 从蓝（未收集）切成灰（已收集），不用等窗口关了重开才看到变化
+  if (spanEl) {
+    spanEl.classList.remove('kw-locked');
+    spanEl.classList.add('kw-unlocked');
+  }
   if (currentModal === 'notebook') openNotebook(notebookTab); // 就地刷新，显示新解锁的词条
 }
 
@@ -247,6 +252,15 @@ function showSignalToast(text) {
 function onHotspotClick(id) {
   const hotspot = mapSys.getHotspot(id);
   if (!hotspot) return;
+  // "被黑暗吞噬"结局（每天都适用）：不在跨过十二点的那次交互里立刻判定——那次
+  // 交互本身的内容（事件文本/掷骰）还是正常走完，pendingDayOver 先留着；等玩家
+  // 在十二点之后真的再点一次地图（不管点哪，去哪都一样），才在这次交互一开始
+  // 拦下来触发结局。
+  if (pendingDayOver) {
+    pendingDayOver = false;
+    handleDayOver();
+    return;
+  }
   if (hotspot.type === 'basecamp') {
     openBasecamp();
   } else {
@@ -262,6 +276,21 @@ function visitInvestigationSpot(id) {
 
   state.location = id;
   if (!state.visitedToday.includes(id)) state.visitedToday.push(id);
+
+  const event = (dayContent.events || []).find(
+    e => e.loc === id && !state.triggeredEvents.includes(e.id)
+  );
+
+  // 这个地点已经没有没触发过的事件了（之前都翻完了）：没什么好调查的，
+  // 这次点击原地不动——不消耗时间，也不判定信号闪现。
+  if (!event) {
+    afterInvestigation();
+    return;
+  }
+
+  // 每次交互固定推进 1 小时，不管事件内容里写的 time 是多少——内容里的 time
+  // 字段现在只是给作者自己看的"大概几点发生"注释，引擎不读它，避免不同事件
+  // 之间耗时忽长忽短（有的 30 分钟有的 4 小时）导致的体感不一致。
   pendingDayOver = timeSys.addMinutes(state, timeSys.TRAVEL_TIME_MIN, dayContent);
 
   // 信号闪现：每次探索调查地点都额外判定一次，见 design-doc.md 3.3 节
@@ -270,15 +299,6 @@ function visitInvestigationSpot(id) {
   if (flare) {
     signalSys.record(state, flare);
     showSignalToast(flare.text);
-  }
-
-  const event = (dayContent.events || []).find(
-    e => e.loc === id && !state.triggeredEvents.includes(e.id)
-  );
-
-  if (!event) {
-    afterInvestigation();
-    return;
   }
 
   state.triggeredEvents.push(event.id);
@@ -310,20 +330,21 @@ function openHotelNight() {
 
 function afterInvestigation() {
   refreshAll();
-  if (pendingDayOver) {
-    pendingDayOver = false;
-    handleDayOver();
-  }
+  // pendingDayOver 留到下一次交互开头再判定，见 onHotspotClick。
 }
 
 /**
- * 事件/掷骰结果里共用的效果字段：clue / clues / sanityCost / unlocksArchive / unlocksLocation。
+ * 事件/掷骰结果里共用的效果字段：clue / clues / sanityCost / unlocksLocation。
  * clue 是单条线索（vlog 素材）的老写法；clues（数组）用于一个事件一次性发放多条线索，
- * 两个字段可以同时写。注意"线索/素材"（clue，会进剪辑台素材库）和"记事本词条"
- * （unlocksArchive，含"物品"分类，比如房间钥匙这种实物道具）是两套不同的东西——
- * 拍到的素材才用 clue，拿到手的道具/解锁的背景资料走 unlocksArchive。
+ * 两个字段可以同时写。
+ *
+ * 注意：记事本词条的解锁不在这里处理——统一只能靠玩家点击正文里的 [[显示文字|key]]
+ * 链接触发（见 onKeywordClick），不会因为事件效果自动解锁。内容里的 unlocksArchive
+ * 字段现在只是给内容作者自己看的文档说明（"这个事件应该会解锁哪个词条"），引擎不再
+ * 读取它——每个 unlocksArchive 列出的 key，正文里必须配一个对应的 [[...|key]] 链接，
+ * 不然这个词条就永远进不了记事本。
  */
-function applyOutcomeEffects(effect, sourceId) {
+function applyOutcomeEffects(effect) {
   for (const clue of [effect.clue, ...(effect.clues || [])].filter(Boolean)) {
     if (!state.collectedClues.includes(clue)) {
       state.collectedClues.push(clue);
@@ -333,11 +354,6 @@ function applyOutcomeEffects(effect, sourceId) {
   }
   if (effect.sanityCost) {
     sanitySys.adjust(state, -effect.sanityCost);
-  }
-  if (effect.unlocksArchive) {
-    for (const key of effect.unlocksArchive) {
-      if (archiveSys.unlock(state, key, `event:${sourceId}`)) notifyArchiveUnlock(key);
-    }
   }
   if (effect.unlocksLocation) {
     state.extraUnlockedLocations ||= [];
@@ -350,10 +366,28 @@ function applyOutcomeEffects(effect, sourceId) {
   }
 }
 
+/**
+ * 记一条"调查回顾"用的事件记录：按触发顺序追加进 state.todayEventLog，
+ * 见 openTracker。text 存原始文本（未解析关键词），渲染回顾列表时才解析，
+ * 跟正文事件窗口的处理方式保持一致（关键词是否已解锁看当时的状态）。
+ */
+function recordEventLog(event, text, note) {
+  const hotspot = mapSys.getHotspot(event.loc);
+  state.todayEventLog.push({
+    eventId: event.id,
+    loc: event.loc,
+    locName: hotspot ? hotspot.name : event.loc,
+    minutes: state.minutes,
+    text,
+    note: note || null
+  });
+}
+
 // ---------- 文本事件 ----------
 
 function showTextEvent(event) {
-  applyOutcomeEffects(event, event.id);
+  applyOutcomeEffects(event);
+  recordEventLog(event, event.text);
   const bodyHTML = kw.parseKeywords(event.text, k => archiveSys.isUnlocked(state, k));
   const body = renderWindow('事件记录', `
     <div class="event-text">${bodyHTML}</div>
@@ -394,7 +428,7 @@ function showDiceEvent(event) {
 }
 
 function finishDice(event, result) {
-  applyOutcomeEffects(result.outcome, event.id);
+  applyOutcomeEffects(result.outcome);
   if (result.extraSanityCost) sanitySys.adjust(state, -result.extraSanityCost);
 
   state.diceLog.push({
@@ -409,6 +443,7 @@ function finishDice(event, result) {
   const rollLine = result.rollInfo
     ? `掷出 [${result.rollInfo.rolls.join(', ')}]，取 ${result.rollInfo.chosen}（判定：${result.outcomeKey}）`
     : '（未掷骰——主动选择承受代价）';
+  recordEventLog(event, result.outcome.text, rollLine);
   const outcomeHTML = kw.parseKeywords(result.outcome.text, k => archiveSys.isUnlocked(state, k));
 
   const body = renderWindow('事件记录', `
@@ -426,35 +461,19 @@ function finishDice(event, result) {
 // ---------- 超时未归 ----------
 
 function handleDayOver() {
-  // 第 1 天特殊规则（草稿约定）：晚上十二点还在镇子里瞎逛、没能在这之前剪辑发布
-  // 并进入下一天，直接被黑暗吞噬判为"陷入疯狂"坏结局，不走下面几天通用的
-  // "未能按时返回"温和惩罚流程。以后如果别的天也要加类似的即时判定，再把这段
-  // 抽成通用的"提前结局检查"，现在先按第 1 天单独写，避免过度设计。
-  if (state.day === 1) {
-    state.ending = 'night_madness';
-    saveState(state);
-    renderWindow('午夜', `
-      <div class="event-text">十二点的钟声敲过，四周的黑忽然浓稠得不像话——两人还没来得及往回走，就被彻底吞了进去。早该赶在十二点前把当天的素材剪出来发布、回旅馆过夜，不该在外面多逗留。</div>
-      <button class="btn" id="btn-continue-madness">继续</button>
-    `);
-    openModal('event');
-    document.getElementById('btn-continue-madness').addEventListener('click', () => {
-      closeModal();
-      showEnding('night_madness');
-    });
-    return;
-  }
-
-  publishSys.failReturn(state);
-  refreshAll();
-  renderWindow('未能按时返回', `
-    <div class="event-text">天黑前没能走回加油站——今天的素材没能剪出来，两人心里都有点发毛。</div>
-    <button class="btn" id="btn-continue-fail">进入下一天</button>
+  // 不分第几天：晚上十二点还在镇子里瞎逛、没能在这之前剪辑发布并回旅馆过夜，
+  // 一律直接被黑暗吞噬判为"陷入疯狂"坏结局，游戏就此结束——不再有"未能按时
+  // 返回"那种温和惩罚（扣理智、直接进下一天）的分支。
+  state.ending = 'night_madness';
+  saveState(state);
+  renderWindow('午夜', `
+    <div class="event-text">十二点的钟声敲过，四周的黑忽然浓稠得不像话——两人还没来得及往回走，就被彻底吞了进去。早该赶在十二点前把当天的素材剪出来发布、回旅馆过夜，不该在外面多逗留。</div>
+    <button class="btn" id="btn-continue-madness">继续</button>
   `);
   openModal('event');
-  document.getElementById('btn-continue-fail').addEventListener('click', () => {
+  document.getElementById('btn-continue-madness').addEventListener('click', () => {
     closeModal();
-    advanceDay();
+    showEnding('night_madness');
   });
 }
 
@@ -546,6 +565,7 @@ function advanceDay() {
   timeSys.resetToday(state, content.days[String(state.day)]);
   state.visitedToday = [];
   state.todayClues = [];
+  state.todayEventLog = [];
   state.usedNewspaperToday = false;
   signalSys.resetDaily(state);
   snapshotDay(state); // 记下新一天开始时的存档点，供"重新度过今日"/"回到上一天"用
@@ -555,15 +575,24 @@ function advanceDay() {
 
 function showEnding(id) {
   const text = endingSys.getText(id, state, content.endings);
+  // "陷入疯狂"是当天中途的意外死亡，不是整个旅程走完后的真结局——比起强制从第 1 天
+  // 重开，更合理的是直接问要不要重新度过今天（复用"重新度过今日"的存档点机制，见
+  // state.js snapshotDay/restoreDayCheckpoint），"重新开始"整个旅程只作为次要选项保留。
+  const isNightMadness = id === 'night_madness';
   renderWindow('旅程 · 结局', `
     <div class="ending-title">${text.title}</div>
     <div class="event-text">${text.text.replace(/\n/g, '<br>')}</div>
-    <button class="btn" id="btn-restart">重新开始</button>
+    ${isNightMadness ? `<button class="btn" id="btn-redo-day">重新度过今日（第 ${state.day} 天）</button>` : ''}
+    <button class="btn ${isNightMadness ? 'btn-gray' : ''}" id="btn-restart" ${isNightMadness ? 'style="margin-top:8px;"' : ''}>重新开始${isNightMadness ? '整个旅程' : ''}</button>
   `);
   openModal('ending');
+  if (isNightMadness) {
+    document.getElementById('btn-redo-day').addEventListener('click', () => applyTimeRewind(state.day));
+  }
   document.getElementById('btn-restart').addEventListener('click', () => {
     clearSave();
     state = createInitialState(content.days['1']);
+    snapshotDay(state); // 补一份第 1 天存档点，不然重开这一局之后"重新度过今日"会找不到存档
     closeModal();
     refreshAll();
   });
@@ -675,7 +704,7 @@ function renderEditor(review, result) {
   if (submitBtn) {
     submitBtn.addEventListener('click', () => {
       const res = reviewSys.submit(state, review, editorTimeline);
-      if (res.effect) applyOutcomeEffects(res.effect, review.id);
+      if (res.effect) applyOutcomeEffects(res.effect);
       refreshAll();
       renderEditor(review, res);
     });
@@ -799,7 +828,7 @@ function renderPublishEditor(dayContent) {
   });
 }
 
-// ---------- 记事本（原"档案库"，按分类分 tab；旧的纯线索列表版记事本已合并进来）/ 主案追踪 ----------
+// ---------- 记事本（原"档案库"，按分类分 tab；旧的纯线索列表版记事本已合并进来）/ 调查回顾 ----------
 
 /**
  * 记事本：以前是"档案库"（分类堆在同一屏里滚动）+ 一个单独的"记事本"（线索 id 平铺列表）
@@ -865,11 +894,24 @@ function openNotebook(tab) {
 
 function openTracker() {
   const progress = archiveSys.computeProgress(state);
-  renderWindow('主案追踪', `
+  const log = state.todayEventLog; // 已经是触发顺序，即当天从早到晚的调查顺序，不用再排序
+  const body = renderWindow('调查回顾', `
     <div class="progress-bar"><div class="progress-fill" style="width:${progress}%"></div></div>
     <div class="hint">探索进度：${progress}%（主线相关记事本词条解锁占比）</div>
-    <button class="btn btn-gray" id="btn-close-plain">关闭</button>
+    <div class="tracker-log">
+      ${log.length === 0
+        ? '<p class="hint" style="margin-top:12px;">今天还没有在任何调查地点触发事件，去地图上看看。</p>'
+        : log.map(entry => `
+          <div class="archive-entry">
+            <div class="archive-entry-title">${timeSys.formatMinutes(entry.minutes)} · ${entry.locName}</div>
+            ${entry.note ? `<div class="hint">${entry.note}</div>` : ''}
+            <div class="event-text" data-key="${entry.eventId}">${kw.parseKeywords(entry.text, k => archiveSys.isUnlocked(state, k))}</div>
+          </div>
+        `).join('')}
+    </div>
+    <button class="btn btn-gray" id="btn-close-plain" style="margin-top:12px;">关闭</button>
   `);
+  bindKeywordClicks(body);
   openModal('tracker');
   document.getElementById('btn-close-plain').addEventListener('click', closeModal);
 }

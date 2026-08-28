@@ -3,7 +3,7 @@
 
 // 版本号在每次改动后递增：旧存档会挂在旧 key 下面，读不到就自动当新档处理，
 // 不需要玩家手动清 localStorage 就能获得一次"从头开始"的测试。
-const SAVE_KEY = 'roadtrip1_save_v4';
+const SAVE_KEY = 'roadtrip1_save_v13';
 
 /**
  * 新开一局的初始状态。
@@ -24,9 +24,12 @@ export function createInitialState(day1Content) {
     triggeredEvents: [],    // 已触发过的事件 id（全程累计，事件不重复触发；day intro 也借用这个数组存 'intro_d<N>' 伪 id）
     collectedClues: [],     // 全程收集到的线索 id
     todayClues: [],         // 当天新收集、尚待发布的线索 id
+    todayEventLog: [],      // 当天按调查顺序排列的事件记录：{ eventId, loc, locName, minutes, text, note }，供"调查回顾"用
 
     archives: {
-      unlocked: [],          // 已解锁的档案库词条 key
+      unlocked: [],          // 已解锁的档案库词条 key——现在唯一的解锁入口是玩家点击正文里的
+                              // [[显示文字|key]] 链接（见 main.js onKeywordClick），所以这个数组
+                              // 本身就等于"点过的链接"，链接蓝/灰直接读它，不需要再单独一份 clicked 记录
       newSinceLastView: []   // 解锁后还没被玩家翻开看过的 key（小红点用）
     },
 

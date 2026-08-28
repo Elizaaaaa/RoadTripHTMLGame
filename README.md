@@ -34,7 +34,7 @@ engine/                 引擎代码，通用规则，不写死任何故事内�
   keyword-parser.js       解析 [[显示文字|key]] 语法为可点击 span
   archive.js              档案库：解锁、分类、跨天主案进度计算
   review.js               复盘：前置条件判定、选项提交、choiceLog 记录
-  publish.js              发布 vlog：播放量结算、超时"更新失败"惩罚
+  publish.js              发布 vlog：播放量结算（超时未归判"被黑暗吞噬"坏结局，见 main.js handleDayOver()，不走这个模块）
   ending.js               结局判定：进度 × 理智值 2x2 矩阵 + 文案变体
   main.js                 启动与流程编排，把上面这些模块接起来
   ui.css                  引擎侧通用界面样式（含理智值氛围反馈动效）

@@ -7,9 +7,9 @@
 export const DEFAULT_DAY_START_MIN = 480;   // 08:00，没在内容里配置 startMin 时的兜底值
 export const DEFAULT_DAY_END_MIN = 1200;    // 20:00，没在内容里配置 endMin 时的兜底值
 
-// 前往任意调查地点（含来回）固定消耗的时间。框架阶段先用一个常量占位，
-// 真实内容如果想做"远近不同耗时不同"，可以把这个值换成按 hotspot 距离查表。
-export const TRAVEL_TIME_MIN = 90;
+// 前往任意调查地点（含来回）固定消耗的时间。统一定成 1 小时——不管去哪个地点、
+// 触发的是哪个事件，每次点击地图交互都固定推进这么多分钟，保证时间感受一致。
+export const TRAVEL_TIME_MIN = 60;
 
 /** 读取某一天的时间窗口（起止分钟数）。dayContent 缺失或没配置对应字段时落回默认值。 */
 export function getDayRange(dayContent) {
