@@ -57,6 +57,14 @@
     "linkedMainCase": true
   },
 
+  "alkaliWorks": {
+    "title": "废弃工厂",
+    "category": "地点",
+    "body": "白湖碱业公司留下的老厂区，铁门锈死，爬满了藤蔓。[[沙狐旅馆|hotel]]入住登记册上有人手写提醒：夜里不要靠近这里，零点前一定要回旅馆——没有署名，也没人见过留言的人。",
+    "unlockedBy": ["keyword_click", "event:e13"],
+    "linkedMainCase": true
+  },
+
   "room_key": {
     "title": "108 号房间钥匙",
     "category": "物品",
