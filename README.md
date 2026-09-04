@@ -1,5 +1,7 @@
 # 《公路旅行禁止偏航 - 白湖镇》· 引擎 README
 
+**测试链接：** https://elizaaaaa.github.io/RoadTripHTMLGame/
+
 本目录是 `design-doc.md` 第 7 节清单对应的落地结果：一套可复用的 **engine/**，配一份非正式的 **content/** 示例数据，验证"加油站出发 → 探索 → 复盘 → 发布 → 下一天 → 结局"这条主循环能跑通。**没有正式故事文案**——`content/` 里的文字全部标了"占位"或在 `_comment` 字段里写明是示例，你写真实故事时替换这些 JSON 即可，原则上不用改 `engine/` 里的代码。
 
 全流程固定 **3 天**，每天时间窗口不同（配置在 `content/days.json` 每天数据的 `startMin`/`endMin` 字段，见 `engine/time.js`）：第 1 天只有晚上（20:00-24:00），第 2、3 天是全天（08:00-24:00）。
