@@ -169,6 +169,7 @@ html, body {
 }
 
 .hotspot-dot {
+  position: relative; /* 给 .has-event 的脉冲光环（::after）当定位参照 */
   width: 18px;
   height: 18px;
   border-radius: 50%;
@@ -207,14 +208,27 @@ html, body {
   outline: 1px solid var(--accent-2);
 }
 
-.hotspot.has-event .hotspot-dot {
+/* 有新事件的点一直在脉冲。这一圈必须用伪元素的 transform+opacity 做，不能用 box-shadow：
+   box-shadow 是 paint 属性、没法交给合成器，11 个热点就是 11 路常驻的 60fps 重绘，
+   而且重绘落在 .map-content 那个装着大图和墨迹 canvas 的合成层里，整张地图跟着卡。
+   几何对齐：dot 是 border-box 18px（含 2px 边框），padding box 14px，
+   inset:-2px 把光环撑回 18px（半径 9），scale(2.11) 的外沿约 19px，
+   正好等于原来 box-shadow 的 9px + 10px spread。
+   z-index:-1 让它落在圆点背景之下（.hotspot 有 transform，已是层叠上下文，不会漏到地图上）。 */
+.hotspot.has-event .hotspot-dot::after {
+  content: "";
+  position: absolute;
+  inset: -2px;
+  z-index: -1;
+  border-radius: 50%;
+  background: rgba(255,153,0,0.7);
   animation: pulse 1.4s infinite;
 }
 
 @keyframes pulse {
-  0%   { box-shadow: 0 0 0 0 rgba(255,153,0,0.7); }
-  70%  { box-shadow: 0 0 0 10px rgba(255,153,0,0); }
-  100% { box-shadow: 0 0 0 0 rgba(255,153,0,0); }
+  0%   { transform: scale(1);    opacity: 0.7; }
+  70%  { transform: scale(2.11); opacity: 0; }
+  100% { transform: scale(2.11); opacity: 0; }
 }
 
 #map-controls {
@@ -857,23 +871,45 @@ button:disabled:hover, .btn:disabled:hover { background: rgba(255, 255, 255, 0.0
 .modal-box.modal-box-small { max-width: 360px; }
 .clip-info-desc { line-height: 1.7; margin: 10px 0 0; }
 
-/* --- 理智值 UI 反馈（5.5 节：氛围化呈现，不直接摆数字） --- */
-body.sanity-shaken #app {
+/* --- 理智值 UI 反馈（5.5 节：氛围化呈现，不直接摆数字） ---
+   闪烁做在 body::after 这一层纯色遮罩上，只动 opacity。
+   不要改回"给 #app 上 filter 动画"的写法：祖先带着一个正在跑的 filter，
+   整棵子树每帧都要重新栅格化（关键帧里 96% 的时间是 none 也没用，动画在跑就一直算），
+   而 #app 里装着整张地图、两张 1536x1024 的图和墨迹 canvas；
+   filter 还会建立新的 containing block，把 .map-content 的 will-change:transform 废掉，
+   平移缩放从 GPU 合成退化成重栅格化，顺带让状态栏/弹窗的 backdrop-filter 每帧重新采样。
+   opacity 是合成器属性，整条动画不碰主线程重绘。
+   z-index 60：盖过状态栏(50)，但压在弹窗(100)之下——跟原先 filter 挂在 #app 上时的覆盖范围一致。 */
+body::after {
+  content: "";
+  display: none;
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  pointer-events: none;
+  opacity: 0;
+}
+
+body.sanity-shaken::after {
+  display: block;
+  background: #000;
   animation: shakenFlicker 6s infinite;
 }
-body.sanity-breaking #app {
+body.sanity-breaking::after {
+  display: block;
+  background: #1a0603; /* 压暗的同时带一点暖红，替掉原来的 hue-rotate */
   animation: breakingFlicker 3s infinite;
 }
 
 @keyframes shakenFlicker {
-  0%, 96%, 100% { filter: none; }
-  97% { filter: contrast(1.1) brightness(0.95); }
+  0%, 96%, 100% { opacity: 0; }
+  97% { opacity: 0.07; }
 }
 @keyframes breakingFlicker {
-  0%, 90%, 100% { filter: none; }
-  92% { filter: contrast(1.3) brightness(0.8) hue-rotate(5deg); }
-  94% { filter: none; }
-  96% { filter: contrast(1.2) brightness(0.85); }
+  0%, 90%, 100% { opacity: 0; }
+  92% { opacity: 0.26; }
+  94% { opacity: 0; }
+  96% { opacity: 0.17; }
 }
 
 /* --- 移动端竖屏提示：默认不显示；只在"触屏 + 竖屏"时盖住全部内容，
