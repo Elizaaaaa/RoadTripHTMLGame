@@ -43,10 +43,10 @@
     <div id="clip-info-box" class="modal-box modal-box-small"></div>
   </div>
 
-  <!-- QQ/BB 事件后闲聊：跟事件绑定时才出现，左右两侧逐条弹气泡，浮在弹窗之上；见 engine/dialogue.js。 -->
+  <!-- QQ/BB 事件后闲聊：跟事件绑定时才出现，仿 iMessage 的聊天串（QQ 灰气泡靠左、BB 蓝气泡靠右），
+       逐条弹出、浮在弹窗之上；见 engine/dialogue.js。 -->
   <div id="dialogue-overlay" class="dialogue-overlay hidden">
-    <div id="dialogue-col-qq" class="dialogue-col dialogue-col-qq"></div>
-    <div id="dialogue-col-bb" class="dialogue-col dialogue-col-bb"></div>
+    <div id="dialogue-thread" class="dlg-thread"></div>
   </div>
 
   <!-- 发布 vlog 之后弹出的"手机数据页"：竖屏手机外壳里显示当期互动数据；

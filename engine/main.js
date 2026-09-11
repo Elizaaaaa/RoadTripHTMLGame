@@ -522,14 +522,17 @@ function playEventPages(eventId, segments, renderPage, onFinish) {
 // ---------- QQ/BB 事件后闲聊 ----------
 //
 // 见 dialogue.js：跟事件 id（+ 第几页）绑定，翻到那一页、准备点"继续"之前，如果
-// 绑了一段对话，就锁住"继续"按钮、在屏幕左右两侧逐条弹气泡播完，播完才解锁。
+// 绑了一段对话，就锁住"继续"按钮、在屏幕左下角的"聊天串"里逐条弹气泡播完，播完才解锁。
 // 气泡本身不在 modalBox 里（modalBox 内容一直没变），是叠在弹窗之上的独立浮层，
-// 所以事件正文和"讨论中"的气泡能同时看见。
+// 所以事件正文和"讨论中"的气泡能同时看见。样式仿 iMessage：QQ 灰气泡靠左、BB 蓝气泡靠右，
+// 每条正文出现之前先冒一个"正在输入"的三点气泡（见 ui.css 的 .dlg-thread 一节）。
 
-const DIALOGUE_STEP_MS = 1300; // 每条气泡之间的间隔
-const DIALOGUE_HOLD_MS = 900;  // 最后一条气泡弹出后，停留多久才判定"讨论完了"
+const DIALOGUE_STEP_MS = 1500;   // 每条消息之间的间隔（从"正在输入"冒头算起）
+const DIALOGUE_TYPING_MS = 700;  // "正在输入"的三个点闪多久，才变成这条消息的正文
+const DIALOGUE_HOLD_MS = 900;    // 最后一条消息出现后，停留多久才判定"讨论完了"
 
 let dialogueTimers = [];
+let dialogueEventId = null; // 当前这串气泡属于哪个事件——同一事件翻页续聊、换事件才清屏
 
 /** 事件/掷骰某一页的"继续"按钮渲染完之后调用：查到绑在这一页后面的对话就锁按钮、播完再解锁。 */
 function maybePlayDialogue(eventId, segmentIndex, totalSegments) {
@@ -542,46 +545,84 @@ function maybePlayDialogue(eventId, segmentIndex, totalSegments) {
   hint.className = 'hint dlg-wait-hint';
   hint.textContent = 'QQ 和 BB 正在讨论……';
   btn.insertAdjacentElement('beforebegin', hint);
-  playDialogue(dialogue, () => {
+  playDialogue(dialogue, eventId, () => {
     btn.disabled = false;
     hint.remove();
   });
 }
 
-function playDialogue(dialogue, onDone) {
-  clearDialogueBubbles();
+function playDialogue(dialogue, eventId, onDone) {
+  // 同一个事件的第二页、第三页接着聊：上一页的气泡留在原地，新消息接着往下堆
+  // （堆满整列就从顶上淡出去）。换了别的事件、或者关窗，才由 clearDialogueBubbles 清屏。
+  if (eventId !== dialogueEventId) clearDialogueBubbles();
+  dialogueEventId = eventId;
+  clearDialogueTimers();
   const overlay = document.getElementById('dialogue-overlay');
   if (!overlay) { onDone(); return; }
   overlay.classList.remove('hidden');
   const lines = dialogue.lines || [];
   lines.forEach((line, i) => {
-    dialogueTimers.push(setTimeout(() => appendDialogueBubble(line), i * DIALOGUE_STEP_MS));
+    // 每条消息分两步：先冒"正在输入"的三个点，过 DIALOGUE_TYPING_MS 再换成正文
+    dialogueTimers.push(setTimeout(() => {
+      const row = appendDialogueRow(line.speaker);
+      dialogueTimers.push(setTimeout(() => fillDialogueRow(row, line), DIALOGUE_TYPING_MS));
+    }, i * DIALOGUE_STEP_MS));
   });
-  const totalMs = Math.max(0, lines.length - 1) * DIALOGUE_STEP_MS + DIALOGUE_HOLD_MS;
+  const totalMs = Math.max(0, lines.length - 1) * DIALOGUE_STEP_MS + DIALOGUE_TYPING_MS + DIALOGUE_HOLD_MS;
   dialogueTimers.push(setTimeout(onDone, totalMs));
 }
 
-function appendDialogueBubble(line) {
-  const isQQ = line.speaker === 'qq';
-  const col = document.getElementById(isQQ ? 'dialogue-col-qq' : 'dialogue-col-bb');
-  if (!col) return;
-  const bubble = document.createElement('div');
-  bubble.className = `dlg-bubble ${isQQ ? 'dlg-bubble-qq' : 'dlg-bubble-bb'}`;
-  const textHTML = kw.parseKeywords(line.text, k => archiveSys.isUnlocked(state, k));
-  bubble.innerHTML = `<span class="dlg-bubble-name">${isQQ ? 'QQ' : 'BB'}</span>${textHTML}`;
-  col.prepend(bubble); // 配合 CSS 的 column-reverse：新气泡插在最前面 = 视觉上出现在最底部，旧气泡整体上移
+/**
+ * 在聊天串底部先冒出一条"正在输入"的气泡，返回这一行，等正文到点了再填进去。
+ * 同一个人连着说的第二句起：这一行不再重复挂名字（dlg-row-cont），上一行的尖角也去掉
+ * （dlg-row-said）——iMessage 里一串连发的消息只有最后一条挂尖角。
+ */
+function appendDialogueRow(speaker) {
+  const thread = document.getElementById('dialogue-thread');
+  if (!thread) return null;
+  const isQQ = speaker === 'qq';
+  const sideClass = isQQ ? 'dlg-row-qq' : 'dlg-row-bb';
+  const prev = thread.firstElementChild; // column-reverse：最前面那个就是刚说完的上一条
+  const row = document.createElement('div');
+  row.className = `dlg-row ${sideClass}`;
+  if (prev && prev.classList.contains(sideClass)) {
+    row.classList.add('dlg-row-cont');
+    prev.classList.add('dlg-row-said');
+  }
+  // 头像目前是纯色占位，里面的字母只是临时标记；换成真头像见 ui.css 的 .dlg-avatar
+  row.innerHTML = `<span class="dlg-avatar">${isQQ ? 'Q' : 'B'}</span>` +
+    `<div class="dlg-body"><span class="dlg-name">${isQQ ? 'QQ' : 'BB'}</span>` +
+    '<div class="dlg-bubble dlg-typing"><i></i><i></i><i></i></div></div>';
+  thread.prepend(row); // 配合 CSS 的 column-reverse：插在最前面 = 视觉上出现在最底部，旧消息整体上移
+  return row;
+}
+
+/** "正在输入"的三个点变成这条消息的正文。 */
+function fillDialogueRow(row, line) {
+  if (!row) return;
+  const bubble = row.querySelector('.dlg-bubble');
+  if (!bubble) return;
+  bubble.classList.remove('dlg-typing');
+  bubble.classList.add('dlg-bubble-in');
+  bubble.innerHTML = kw.parseKeywords(line.text, k => archiveSys.isUnlocked(state, k));
   bindKeywordClicks(bubble);
 }
 
-/** 清掉还没播完的定时器 + 已经弹出的气泡，closeModal() 和重新播放前都会调一次。 */
-function clearDialogueBubbles() {
+/** 只掐掉还没播完的定时器，不动已经弹出来的气泡。 */
+function clearDialogueTimers() {
   dialogueTimers.forEach(clearTimeout);
   dialogueTimers = [];
+}
+
+/** 定时器 + 已经弹出的气泡一起清掉：closeModal() 关窗、或者换了另一个事件时调。 */
+function clearDialogueBubbles() {
+  clearDialogueTimers();
+  dialogueEventId = null;
   const overlay = document.getElementById('dialogue-overlay');
   if (!overlay) return;
   overlay.classList.add('hidden');
-  document.getElementById('dialogue-col-qq').innerHTML = '';
-  document.getElementById('dialogue-col-bb').innerHTML = '';
+  const thread = document.getElementById('dialogue-thread');
+  if (thread) thread.innerHTML = '';
 }
 
 // ---------- 超时未归 ----------

@@ -514,10 +514,12 @@ button:disabled:hover, .btn:disabled:hover { background: rgba(255, 255, 255, 0.0
   to   { opacity: 1; transform: translateY(0); }
 }
 
-/* --- QQ/BB 事件后闲聊：跟事件绑定的对话，浮在弹窗之上、屏幕左右两侧逐条弹气泡。
-   见 engine/dialogue.js + main.js playDialogue()。左列固定给 QQ，右列固定给 BB，
-   两列各自独立累积——column-reverse + 新气泡插到最前面，视觉上新气泡从下面弹出，
-   旧气泡整体被"挤"着往上移，而不是消失。 --- */
+/* --- QQ/BB 事件后闲聊：跟事件绑定的对话，浮在弹窗之上，做成 iMessage 聊天串的样子。
+   见 engine/dialogue.js + main.js playDialogue()。整块是一条连续的聊天记录：QQ 在左边
+   发灰气泡、BB 在右边发蓝气泡，每条正文出现之前先冒一个"正在输入"的三点气泡。
+   column-reverse + 新消息 prepend 到最前面：视觉上新消息从底部冒出来、旧消息被顶上去，
+   顶部用渐变 mask 淡出而不是被硬切断。气泡尖角（tail）是纯 CSS：一个跟气泡同色的小方块，
+   用 radial-gradient 当遮罩挖掉一个圆，剩下的弯钩就是 iMessage 那个尾巴，不需要图片。 --- */
 .dialogue-overlay {
   position: fixed;
   inset: 0;
@@ -525,56 +527,181 @@ button:disabled:hover, .btn:disabled:hover { background: rgba(255, 255, 255, 0.0
   pointer-events: none;
 }
 
-.dialogue-col {
+.dlg-thread {
+  /* iMessage 浅色模式取色：对方的灰气泡 / 自己发的蓝气泡 */
+  --imsg-gray: #e9e9eb;
+  --imsg-blue: #0b84ff;
+
+  /* 落在屏幕右下角那片空地上，但不贴边：--dlg-gutter 是"事件弹窗右边缘到屏幕右边"的空档
+     （弹窗最宽 560px、居中，所以是半屏减 280px），聊天串在这块空档里居中摆放。
+     这样窗口放大时它跟着往里挪、窗口变窄时自动收窄，始终不压住中间的事件正文。 */
+  --dlg-gutter: calc(50vw - 280px);
+  --dlg-width: clamp(200px, calc(var(--dlg-gutter) - 48px), 400px);
+
   position: fixed;
-  bottom: 90px;
+  right: calc((var(--dlg-gutter) - var(--dlg-width)) / 2);
+  bottom: 56px;
+  width: var(--dlg-width);
+  /* 固定高度（不是 max-height）：配合 column-reverse，消息始终贴着底部往上堆，
+     上面那截是空的。高度由内容撑的话，下面那条按百分比算的淡出蒙版会一直啃在
+     最上面一条消息上（名字被糊掉就是这么来的）。 */
+  height: 48vh;
   display: flex;
   flex-direction: column-reverse;
   gap: 8px;
-  max-width: 280px;
-  max-height: 60vh;
   overflow: hidden;
   pointer-events: none;
+  /* 顶部淡出：只在消息多到顶满整列时才吃到，固定 40px 一条窄带，不按百分比算 */
+  -webkit-mask-image: linear-gradient(to top, #000 calc(100% - 40px), transparent 100%);
+          mask-image: linear-gradient(to top, #000 calc(100% - 40px), transparent 100%);
 }
-.dialogue-col-qq { left: 20px; bottom: 200px; align-items: flex-start; } /* QQ 这列单独调高一点 */
-.dialogue-col-bb { right: 20px; align-items: flex-end; }
+
+/* 一行 = 头像 + （名字 + 气泡）。QQ 的头像在气泡左边，BB 的用 row-reverse 挪到右边。 */
+.dlg-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 10px; /* 留出气泡尖角（往外伸 8px）不顶到头像的余量 */
+  animation: dlgRowIn 0.26s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.dlg-row-qq { justify-content: flex-start; }
+.dlg-row-bb { flex-direction: row-reverse; justify-content: flex-start; }
+
+.dlg-body {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  max-width: calc(100% - 38px); /* 给头像（28px）+ gap 留位 */
+}
+.dlg-row-bb .dlg-body { align-items: flex-end; }
+
+/* 头像：暂时纯色占位，字母只是临时标记。换真头像时把 background 换成
+   url(../assets/avatars/qq.png) center/cover，再把 main.js 里填的字母去掉即可。 */
+.dlg-avatar {
+  flex: 0 0 auto;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 700;
+  color: #fff;
+  user-select: none;
+  background: var(--dlg-avatar-bg);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+}
+.dlg-row-qq .dlg-avatar { --dlg-avatar-bg: #ff9f0a; }
+.dlg-row-bb .dlg-avatar { --dlg-avatar-bg: #bf5af0; }
+
+/* 同一个人连着说的第二句起：不重复挂名字，间距收紧（对应 main.js 里的 dlg-row-cont） */
+.dlg-row-cont { margin-top: -6px; }
+.dlg-row-cont .dlg-name { display: none; }
+
+.dlg-name {
+  font-size: 11px;
+  letter-spacing: 0.03em;
+  color: rgba(255, 255, 255, 0.62);
+  margin: 0 12px 3px;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8); /* 底下可能是浅色的地图，得压得住 */
+}
 
 .dlg-bubble {
-  pointer-events: auto;
-  padding: 8px 12px;
-  border-radius: 14px;
-  font-size: 12.5px;
-  line-height: 1.55;
+  position: relative;
+  max-width: 100%;
+  padding: 8px 14px 9px;
+  border-radius: 18px;
+  font-size: 13px;
+  line-height: 1.45;
   white-space: pre-wrap;
-  box-shadow: var(--window-shadow);
-  animation: dlgBubbleIn 0.25s ease-out;
+  overflow-wrap: break-word;
+  pointer-events: auto;
+  /* drop-shadow 会顺着尖角的形状走（box-shadow 不行，它只认矩形盒子） */
+  filter: drop-shadow(0 1px 3px rgba(0, 0, 0, 0.3));
 }
 
-.dlg-bubble-name {
-  display: block;
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  opacity: 0.65;
-  margin-bottom: 2px;
+.dlg-row-qq .dlg-bubble {
+  background: var(--imsg-gray);
+  color: #000;
+  border-bottom-left-radius: 5px;
 }
-
-.dlg-bubble-qq {
-  background: rgba(var(--accent2-rgb), 0.22);
-  border: 1px solid rgba(var(--accent2-rgb), 0.5);
+.dlg-row-bb .dlg-bubble {
+  background: var(--imsg-blue);
   color: #fff;
-  border-bottom-left-radius: 4px;
-}
-.dlg-bubble-bb {
-  background: rgba(var(--accent-rgb), 0.22);
-  border: 1px solid rgba(var(--accent-rgb), 0.5);
-  color: #fff;
-  border-bottom-right-radius: 4px;
+  border-bottom-right-radius: 5px;
 }
 
+/* 气泡尖角：18×18 的小方块 + 圆形遮罩，挖出 iMessage 那个往外弯的钩子 */
+.dlg-bubble::after {
+  content: "";
+  position: absolute;
+  bottom: 0;
+  width: 18px;
+  height: 18px;
+}
+.dlg-row-qq .dlg-bubble::after {
+  left: -8px;
+  background: var(--imsg-gray);
+  border-bottom-left-radius: 3px;
+  -webkit-mask: radial-gradient(circle 18px at 0 0, transparent 99%, #000 100%);
+          mask: radial-gradient(circle 18px at 0 0, transparent 99%, #000 100%);
+}
+.dlg-row-bb .dlg-bubble::after {
+  right: -8px;
+  background: var(--imsg-blue);
+  border-bottom-right-radius: 3px;
+  -webkit-mask: radial-gradient(circle 18px at 100% 0, transparent 99%, #000 100%);
+          mask: radial-gradient(circle 18px at 100% 0, transparent 99%, #000 100%);
+}
+/* 一串连发的消息里，只有最后一条挂尖角（iMessage 就是这么干的）：
+   dlg-row-said 由 main.js 补给"后面还跟着同一个人的下一句"的那几行。 */
+.dlg-row-said .dlg-bubble::after { display: none; }
+/* 头像同理，只挂在一串连发的最后一条上；前面几条留住位置、不占地方地隐掉 */
+.dlg-row-said .dlg-avatar { visibility: hidden; }
+.dlg-row-said.dlg-row-qq .dlg-bubble { border-bottom-left-radius: 18px; }
+.dlg-row-said.dlg-row-bb .dlg-bubble { border-bottom-right-radius: 18px; }
+
+/* "正在输入"：三个点在气泡里依次起伏 */
+.dlg-typing {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 12px 14px;
+}
+.dlg-typing i {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.32);
+  animation: dlgTypingDot 1.25s infinite ease-in-out;
+}
+.dlg-row-bb .dlg-typing i { background: rgba(255, 255, 255, 0.75); }
+.dlg-typing i:nth-child(2) { animation-delay: 0.18s; }
+.dlg-typing i:nth-child(3) { animation-delay: 0.36s; }
+
+/* 气泡里的关键词链接：默认那套（亮蓝 / 灰）在浅色气泡上看不清，这里按气泡底色重配。
+   语义不变：kw-locked = 还没收进记事本（可点），kw-unlocked = 已收集（"访问过的链接"）。 */
+.dlg-row-qq .dlg-bubble .kw-locked { color: #0b6fd8; }
+.dlg-row-qq .dlg-bubble .kw-unlocked { color: #8e8e93; }
+.dlg-row-bb .dlg-bubble .kw-locked { color: #fff; }
+.dlg-row-bb .dlg-bubble .kw-unlocked { color: rgba(255, 255, 255, 0.62); }
+
+@keyframes dlgRowIn {
+  from { opacity: 0; transform: translateY(10px) scale(0.94); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+/* 三点变成正文的那一下：从尖角那侧撑开 */
 @keyframes dlgBubbleIn {
-  from { opacity: 0; transform: translateY(10px); }
-  to   { opacity: 1; transform: translateY(0); }
+  from { opacity: 0.35; transform: scale(0.92); }
+  to   { opacity: 1; transform: scale(1); }
+}
+.dlg-row-qq .dlg-bubble-in { animation: dlgBubbleIn 0.2s ease-out; transform-origin: left bottom; }
+.dlg-row-bb .dlg-bubble-in { animation: dlgBubbleIn 0.2s ease-out; transform-origin: right bottom; }
+
+@keyframes dlgTypingDot {
+  0%, 60%, 100% { opacity: 0.35; transform: translateY(0); }
+  30%           { opacity: 1;    transform: translateY(-3px); }
 }
 
 /* --- 开始剪辑：仿简易剪辑软件的复盘 UI（素材库 + 时间轴，拖拽拼顺序） --- */
