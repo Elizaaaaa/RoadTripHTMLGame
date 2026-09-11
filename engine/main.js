@@ -11,6 +11,7 @@ import * as kw from './keyword-parser.js';
 import * as archiveSys from './archive.js';
 import * as reviewSys from './review.js';
 import * as publishSys from './publish.js';
+import * as vlogStats from './vlogstats.js';
 import * as signalSys from './signal.js';
 import * as dialogueSys from './dialogue.js';
 import * as basecampSys from './basecamp.js';
@@ -21,7 +22,7 @@ import {
 } from './state.js';
 
 let state;
-let content = {};      // { days, archive, endings }
+let content = {};      // { days, archive, endings, materials, map }
 let modalBox;
 let currentModal = null;   // 'event' | 'basecamp' | 'publishEdit' | 'notebook' | 'tracker' | 'ending'
 let notebookTab = null;    // 记事本当前选中的分类 tab（跨重渲染保持选中）
@@ -46,6 +47,7 @@ async function boot() {
     return;
   }
 
+  content.map = mapData; // 手机数据页要拿底图当视频封面，见 openVlogPhone()
   archiveSys.init(content.archive);
   reviewSys.init(content.materials);
   const loaded = loadState();
@@ -308,6 +310,31 @@ function visitInvestigationSpot(id) {
   } else {
     showTextEvent(event);
   }
+}
+
+// ---------- 发布之后的"手机数据页" ----------
+//
+// 确认发布 → 掏出手机刷当期互动数据（播放/点赞/评论/完播率/评论区，见
+// engine/vlogstats.js）→ 收起手机 → 旅馆的"进入下一天"。播放量本身还是
+// engine/publish.js 结算的，手机页只负责展示和派生其余指标。
+
+/**
+ * @param {number} [day] 想看哪一天的数据，默认今天
+ * @param {Function|null} [onClose] 收起手机之后走的下一步；默认接旅馆流程，
+ *        传 null 表示"看完就回到原来的界面"（加油站/剪辑台里的补看入口用）
+ */
+function openVlogPhone(day = state.day, onClose = openHotelNight) {
+  const opened = vlogStats.open({
+    state,
+    day,
+    dayContent: content.days[String(day)],
+    channel: content.days.meta && content.days.meta.channel,
+    cover: content.map && content.map.mapImage,
+    onClose
+  });
+  // 首次打开会把派生出来的数据缓存进 publishLog 那条记录，存一次档让它固定下来
+  if (opened) saveState(state);
+  else if (onClose) onClose(); // 那天没有发布记录（比如超时未归），直接走下一步
 }
 
 // ---------- 沙狐旅馆：发布之后的"回房休息" → 进入下一天 ----------
@@ -623,7 +650,12 @@ function renderPublishTab(body, dayContent) {
   if (alreadyPublished) {
     // 正常流程发布成功后会自动弹出旅馆的"进入下一天"窗口；这里是玩家提前把那个
     // 窗口关掉之后，再翻回发布 tab 时的补救入口。
-    body.innerHTML = `<p class="hint">今天已经发布过了。</p><button class="btn" id="btn-back-to-hotel">回旅馆休息</button>`;
+    body.innerHTML = `
+      <p class="hint">今天已经发布过了。</p>
+      <button class="btn btn-gray" id="btn-view-stats">查看本期数据</button>
+      <button class="btn" id="btn-back-to-hotel">回旅馆休息</button>
+    `;
+    document.getElementById('btn-view-stats').addEventListener('click', () => openVlogPhone(state.day, null));
     document.getElementById('btn-back-to-hotel').addEventListener('click', () => { closeModal(); openHotelNight(); });
     return;
   }
@@ -878,8 +910,13 @@ function openClipEditor() {
   if (!dayContent) return;
   const alreadyPublished = state.publishLog.some(p => p.day === state.day && !p.failed);
   if (alreadyPublished) {
-    renderWindow('剪辑', `<p class="hint">今天已经发布过了。</p><button class="btn" id="btn-back-to-hotel">回旅馆休息</button>`);
+    renderWindow('剪辑', `
+      <p class="hint">今天已经发布过了。</p>
+      <button class="btn btn-gray" id="btn-view-stats">查看本期数据</button>
+      <button class="btn" id="btn-back-to-hotel">回旅馆休息</button>
+    `);
     openModal('publishEdit');
+    document.getElementById('btn-view-stats').addEventListener('click', () => openVlogPhone(state.day, null));
     document.getElementById('btn-back-to-hotel').addEventListener('click', () => { closeModal(); openHotelNight(); });
     return;
   }
@@ -933,7 +970,7 @@ function renderPublishEditor(dayContent, result) {
 
   document.getElementById('btn-editor-close').addEventListener('click', () => {
     closeModal();
-    if (done) openHotelNight();
+    if (done) openVlogPhone();
   });
 
   body.querySelectorAll('.clip-icon, .clip-block').forEach(el => {
@@ -950,15 +987,16 @@ function renderPublishEditor(dayContent, result) {
     const reviewResult = review ? reviewSys.submit(state, review, publishEditorTimeline) : null;
     if (reviewResult && reviewResult.effect) applyOutcomeEffects(reviewResult.effect);
 
-    const pubResult = publishSys.publish(state, publishEditorTimeline);
+    publishSys.publish(state, publishEditorTimeline);
     refreshAll();
-    showToast(`🎬 发布成功，当晚播放量：${pubResult.playcount}${pubResult.glitched ? '（素材出了点问题，效果打了折扣）' : ''}`);
 
+    // 播放量不再用 toast 报，改成发完掏出手机看后台数据（见 openVlogPhone）。
+    // 当天配了复盘的话先停在编辑页看对错反馈，点"完成"再弹手机。
     if (reviewResult) {
-      renderPublishEditor(dayContent, reviewResult); // 停在编辑页展示对错反馈，玩家点"完成"再进旅馆流程
+      renderPublishEditor(dayContent, reviewResult);
     } else {
       closeModal();
-      openHotelNight();
+      openVlogPhone();
     }
   });
 }

@@ -1,8 +1,9 @@
 {
-  "_comment": "示例数据，仅用于跑通引擎流程，非正式剧本。共 3 天，字段结构对应 design-doc.md 第 2/3/4/5 节。全程时间窗口不再是同一个常量：第 1 天只有晚上（startMin=1200/20:00 ~ endMin=1440/24:00），第 2、3 天是全天（startMin=480/08:00 ~ endMin=1440/24:00），每天的 startMin/endMin 字段见下方，由 engine/time.js 读取。真实故事请照此结构自行扩充 unlockedLocations / events / newspaper / signalPool / reviews / dialogues。events[].text（以及 diceCheck 的 outcomes[].text）里可以写字面换行符 \\n 把长文本拆成几页，玩家每点一次“继续”翻一页，见 engine/main.js 的 splitSegments/playEventPages；调查回顾照旧显示原始整段文本，不受分页影响。dialogues 是 QQ/BB 事件后闲聊，跟 events[].id（+ 可选的第几页 afterSegment，不写默认绑最后一页）绑定，翻到那一页后必定播放（不进 signalPool、不随机、不进当日摘要），格式见 engine/dialogue.js 顶部注释：{ id, afterEvent: 事件id, afterSegment?: 页码, lines: [{ speaker: 'qq'|'bb', text }] }。",
+  "_comment": "示例数据，仅用于跑通引擎流程，非正式剧本。共 3 天，字段结构对应 design-doc.md 第 2/3/4/5 节。全程时间窗口不再是同一个常量：第 1 天只有晚上（startMin=1200/20:00 ~ endMin=1440/24:00），第 2、3 天是全天（startMin=480/08:00 ~ endMin=1440/24:00），每天的 startMin/endMin 字段见下方，由 engine/time.js 读取。真实故事请照此结构自行扩充 unlockedLocations / events / newspaper / signalPool / reviews / dialogues。每天还可以写 vlogTitle（这期视频标题）和 vlogComments（发布后手机数据页里的评论区，格式 { user, text, likes?, alien? }，alien:true 显示成灰色斜体的“未知来源”评论），频道名写在 meta.channel，见 engine/vlogstats.js。events[].text（以及 diceCheck 的 outcomes[].text）里可以写字面换行符 \\n 把长文本拆成几页，玩家每点一次“继续”翻一页，见 engine/main.js 的 splitSegments/playEventPages；调查回顾照旧显示原始整段文本，不受分页影响。dialogues 是 QQ/BB 事件后闲聊，跟 events[].id（+ 可选的第几页 afterSegment，不写默认绑最后一页）绑定，翻到那一页后必定播放（不进 signalPool、不随机、不进当日摘要），格式见 engine/dialogue.js 顶部注释：{ id, afterEvent: 事件id, afterSegment?: 页码, lines: [{ speaker: 'qq'|'bb', text }] }。",
 
   "meta": {
-    "totalDays": 3
+    "totalDays": 3,
+    "channel": { "name": "QQ & BB", "handle": "@no_detour_on_the_road" }
   },
 
   "1": {
@@ -53,6 +54,13 @@
     ],
 
     "newspaper": [],
+
+    "vlogTitle": "第一夜：没有人的加油站",
+
+    "vlogComments": [
+      { "user": "路过的柴油机", "text": "深夜加油站的空镜绝了，这氛围是真的还是加了滤镜？", "likes": 24 },
+      { "user": "阿福不接电话", "text": "白湖镇？我在地图上搜不到这个地名啊。", "likes": 11 }
+    ],
 
     "signalPool": [],
 
@@ -151,6 +159,14 @@
       { "id": "np2", "text": "论坛老帖里一条几乎没人回复的留言：\"我们家以前在那边有块地……后来不要了。\"" }
     ],
 
+    "vlogTitle": "第二天：家家亮着灯，一个人都没有",
+
+    "vlogComments": [
+      { "user": "夜观星象", "text": "满镇子的灯都亮着却看不见人……你们真不觉得瘆得慌？", "likes": 46 },
+      { "user": "土豆先生", "text": "3 分 20 秒那扇窗户后面有东西动了一下，我倒回去看了五遍。", "likes": 38 },
+      { "user": "………", "text": "别再往西边走了。", "alien": true }
+    ],
+
     "signalPool": [
       { "id": "sig3", "text": "@夜观星象：等等，我记得这个加油站，我爷爷说他年轻时经过这里，再也没敢走小路……", "flavor": true, "clue": null },
       { "id": "sig4", "text": "@匿名用户2：你们发的第三段视频背景里，好像有个人影。", "flavor": true, "clue": "bg_figure" }
@@ -245,6 +261,14 @@
 
     "newspaper": [
       { "id": "np3", "text": "最早提醒你们的那个论坛账号，主页除了那几条留言之外再没发过别的东西，注册时间是七年前。" }
+    ],
+
+    "vlogTitle": "第三天：坑底那排鞋",
+
+    "vlogComments": [
+      { "user": "夜观星象", "text": "更新了就好。昨天晚上我一直刷不出你们的视频。", "likes": 57 },
+      { "user": "匿名用户7", "text": "坑底那段我暂停数了一下，鞋是双数，摆得也太整齐了。", "likes": 63 },
+      { "user": "QQ & BB（置顶）", "text": "谢谢大家关心，我们明天一早就出发回家。", "likes": 4, "alien": true }
     ],
 
     "signalPool": [

@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<!--
+  phone-preview.html —— "手机数据页"（发布 vlog 之后弹出的互动数据面板）的预览工具。
+  改 engine/phone.css / engine/vlogstats.js 时不用真的从第 1 天玩到发布，直接开这个
+  页面看效果：右上角可以切换第几天、理智档位、素材是否出错。
+
+  要用本地静态服务器打开（跟游戏本体一样，file:// 下 ES module + JSON 请求会被拦），
+  在项目根目录执行 npx serve . 或 python -m http.server，再访问 /tools/phone-preview.html。
+-->
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>手机数据页预览</title>
+<link rel="stylesheet" href="../engine/phone.css">
+<style>
+  body {
+    margin: 0;
+    background: #0a0a0a;
+    color: #d8d8d8;
+    font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif;
+  }
+  #panel {
+    position: fixed;
+    top: 12px;
+    left: 12px;
+    z-index: 500;
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    padding: 10px 12px;
+    background: rgba(28, 28, 30, 0.9);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 10px;
+    font-size: 13px;
+  }
+  select, button {
+    font: inherit;
+    color: inherit;
+    background: #1c1c1c;
+    border: 1px solid #3a3a3a;
+    border-radius: 6px;
+    padding: 4px 8px;
+  }
+  button { cursor: pointer; }
+</style>
+</head>
+<body>
+  <div id="panel">
+    <label>第 <select id="sel-day"><option>1</option><option selected>2</option><option>3</option></select> 天</label>
+    <label>理智 <select id="sel-tier">
+      <option value="clear">清醒</option>
+      <option value="shaken">动摇</option>
+      <option value="breaking">濒崩</option>
+    </select></label>
+    <label><input type="checkbox" id="chk-glitch"> 素材出错</label>
+    <button id="btn-render">重新弹出</button>
+  </div>
+
+  <div id="phone-overlay" class="phone-overlay hidden"></div>
+
+<script type="module">
+import * as reviewSys from '../engine/review.js';
+import * as vlogStats from '../engine/vlogstats.js';
+
+// 每天用哪几条素材：直接取当天所有事件发出的线索，模拟"全剪进时间轴"
+function cluesOfDay(dayContent) {
+  const ids = [];
+  for (const ev of dayContent.events || []) {
+    if (ev.clue) ids.push(ev.clue);
+    if (Array.isArray(ev.clues)) ids.push(...ev.clues);
+    for (const o of (ev.diceCheck && ev.diceCheck.outcomes) || []) {
+      if (o.clue) ids.push(o.clue);
+      if (Array.isArray(o.clues)) ids.push(...o.clues);
+    }
+  }
+  return [...new Set(ids)].slice(0, 5);
+}
+
+const [days, materials] = await Promise.all([
+  fetch('../content/days.json').then(r => r.json()),
+  fetch('../content/materials.json').then(r => r.json())
+]);
+reviewSys.init(materials);
+
+function render() {
+  const day = Number(document.getElementById('sel-day').value);
+  const tier = document.getElementById('sel-tier').value;
+  const glitched = document.getElementById('chk-glitch').checked;
+
+  // 造一份假的 state：前面几天都发布过（这样"累计"那一档也有数），当天按面板选的档位算
+  const publishLog = [];
+  for (let d = 1; d <= day; d++) {
+    const clues = cluesOfDay(days[String(d)] || {});
+    publishLog.push({
+      day: d,
+      playcount: 100 + clues.length * 50,
+      glitched: d === day ? glitched : false,
+      tier: d === day ? tier : 'clear',
+      clues
+    });
+  }
+
+  vlogStats.close();
+  vlogStats.open({
+    state: { day, publishLog, signalToday: (days[String(day)] || {}).signalPool || [] },
+    day,
+    dayContent: days[String(day)],
+    channel: days.meta && days.meta.channel,
+    cover: '../assets/maps/white-lake-map-now.png',
+    onClose: null
+  });
+}
+
+document.getElementById('btn-render').addEventListener('click', render);
+for (const id of ['sel-day', 'sel-tier', 'chk-glitch']) {
+  document.getElementById(id).addEventListener('change', render);
+}
+render();
+</script>
+</body>
+</html>

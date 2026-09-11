@@ -37,9 +37,11 @@ engine/                 引擎代码，通用规则，不写死任何故事内�
   archive.js              档案库：解锁、分类、跨天主案进度计算
   review.js               复盘：前置条件判定、选项提交、choiceLog 记录
   publish.js              发布 vlog：播放量结算（超时未归判"被黑暗吞噬"坏结局，见 main.js handleDayOver()，不走这个模块）
+  vlogstats.js            发布之后弹出的"手机数据页"：把播放量派生成点赞/评论/关注/完播率等互动数据并渲染
   ending.js               结局判定：进度 × 理智值 2x2 矩阵 + 文案变体
   main.js                 启动与流程编排，把上面这些模块接起来
   ui.css                  引擎侧通用界面样式（含理智值氛围反馈动效）
+  phone.css               "手机数据页"专用样式（竖屏手机外壳 + 暖色玻璃拟态，跟 ui.css 的 macOS 灰调分开）
 content/                 示例数据，非正式剧本，改这里不用碰 engine/
   worldbuilding.md         已确认的世界观命名 canon（镇名/地名/公司名），写正式文案前先看这个
   days.json               3 天示例：地点开放表、事件、掷骰事件、信号池、复盘、旧报纸、每天时间窗口
@@ -52,12 +54,19 @@ assets/maps/
   hotspots.json            热点坐标表（1 个 basecamp + 10 个 investigation）
 tools/
   coord-picker.html        独立的地图坐标拾取小工具，见下方说明
+  phone-preview.html       "手机数据页"预览工具：不用真玩到发布就能看样式，见下方说明
 _legacy-reference/        重构前参照的旧原型（另一个故事，仅供工程参考，不是本项目内容）
 ```
 
 ## 换地图 / 加点位：坐标拾取小工具
 
 `tools/coord-picker.html` 是纯前端单文件小工具，不属于游戏本体，双击直接用浏览器打开就行（不用起本地服务器）：拖一张地图图片进去（或用按钮选 / Ctrl+V 粘贴）→ 在图上点击想放标记的位置 → 右侧列表里改 `id`/`name`/`type` → 点「复制 JSON」或「下载 hotspots.json」，把结果贴进 [assets/maps/hotspots.json](assets/maps/hotspots.json)。支持滚轮缩放、拖动平移、拖动已有标记微调位置，坐标定义和 `hotspots.json` 里的 `x`/`y` 完全一致（像素位置 ÷ 图片原始宽高 × 100，跟图片在页面里显示多大无关）。
+
+## 发布之后的"手机数据页"
+
+每天在剪辑台点「确认发布」之后（当天配了复盘的话，是看完对错反馈点「完成」之后），会弹出一个竖屏手机界面：封面用地图底图压成暖色调当视频封面，下面是本期播放/点赞/评论三宫格、最热片段、完播率、新增关注和评论区，收起手机才接旅馆的「进入下一天」。播放量仍然由 `engine/publish.js` 结算，其余指标由 `engine/vlogstats.js` 按"播放量 + 当期素材重要度 + 理智档位"派生——用以（天数 + 播放量 + 素材 id）为种子的伪随机数，所以同一期数据反复打开都是同一组数字，算完还会缓存进 `state.publishLog` 那条记录的 `stats` 字段。理智濒崩时点赞/评论上浮、完播率下降，素材出错（`glitched`）时整体打折，都会在面板上给一句提示。发布过之后想再看一眼，可以从加油站「发布 vlog」tab 或顶部「开始剪辑」里的「查看本期数据」进去。
+
+改这套界面的样式时用 `tools/phone-preview.html`（要起本地静态服务器，访问 `/tools/phone-preview.html`）：左上角能直接切第几天、理智档位、素材是否出错，不用真的从第 1 天玩到发布。
 
 ## 内容结构速览（改故事只用改这几份 JSON）
 
@@ -70,6 +79,9 @@ _legacy-reference/        重构前参照的旧原型（另一个故事，仅供
   - `newspaper`：加油站"翻旧报纸"能看到的内容，每天一次
   - `signalPool`：信号闪现的候选池，被动小概率触发
   - `reviews`：复盘，`req` 是需要先采集到的 `clue` id 数组，`options[].tag` 会写进 `choiceLog`，供结局文案变体匹配
+  - `vlogTitle`：这期 vlog 的标题，发布后的手机数据页显示在频道名下面；不写兜底"第 N 天的素材"
+  - `vlogComments`：手机数据页评论区里的评论，`{ user, text, likes?, alien? }`，`alien:true` 显示成灰色斜体的"未知来源"评论（呼应"置顶那条不是我们发的"）；当天真的弹出过的信号闪现会自动接在后面，不用重复写
+  - 频道名写在 `meta.channel`（`{ name, handle }`），不写兜底 `QQ & BB`
 - **`content/archive.json`**：`category` 随便定义（地点/人物/事件/物品……），`linkedMainCase:true` 的词条才计入探索进度（5.3 节 progress），`unlockedBy` 目前只是给你自己看的注释，引擎侧任何途径调用 `archive.unlock()` 都算数，不校验来源。
 - **`content/endings.json`**：当前代码里还是旧模型的 4 个结局 key（`truth_escape`/`costly_escape`/`blind_escape`/`trapped`，对应旧的"探索进度×San值 2x2 矩阵"）；`variants[].when` 对应 `choiceLog` 里的 `tag`，命中就把 `text` 追加在结局正文后面。**待更新**：设计已确认改成 3 个结局的新模型（San 值熔断/进度不够 → 结局①，进度达标后由高潮关键抉择二选一给出结局②/③），见 design-doc.md 5.3 节；`engine/ending.js` 和这份 JSON 都还没跟着改，等正式故事大纲到位后一起重构。
 

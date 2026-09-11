@@ -30,6 +30,7 @@ export function publish(state, selectedClueIds) {
     day: state.day,
     playcount: result.playcount,
     glitched: result.glitched,
+    tier: result.tier,       // 发布当时的理智档位，发布后的"手机数据页"据此派生点赞/评论等数据，见 engine/vlogstats.js
     clues: selectedClueIds
   });
   state.didFailReturn = false;
