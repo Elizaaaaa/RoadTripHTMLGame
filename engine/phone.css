@@ -64,8 +64,57 @@
   scrollbar-width: none;
   -webkit-overflow-scrolling: touch;
   padding-bottom: 28px;
+  /* 滚轮之外还能按住鼠标上下拖（见 vlogstats.js 的 wireDragScroll）；
+     禁掉选中，免得拖的时候把文字刷成一片蓝 */
+  cursor: grab;
+  user-select: none;
+  -webkit-user-select: none;
 }
+.phone-screen.dragging { cursor: grabbing; }
 .phone-screen::-webkit-scrollbar { display: none; }
+
+/* --- 手机左边空地上的"还能往下划"提示：竖排一列字 + 一个上下点头的箭头。
+   点它往下翻一屏；玩家自己滚过之后就淡出，不再出现。位置用 clamp 夹住，
+   窗口再窄也不会糊到手机上。 --- */
+.phone-scroll-hint {
+  position: absolute;
+  top: 50%;
+  left: clamp(16px, 24%, calc(50% - 230px));
+  transform: translate(-50%, -50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  padding: 10px 6px;
+  border: none;
+  background: none;
+  font-family: inherit;
+  color: rgba(235, 220, 205, 0.52);
+  text-shadow: 0 1px 6px rgba(0, 0, 0, 0.5);
+  cursor: pointer;
+  opacity: 1;
+  transition: opacity 0.6s ease, color 0.2s ease;
+  animation: fadeIn 1s ease-out 1.3s both;
+}
+.phone-scroll-hint:hover { color: rgba(255, 190, 140, 0.8); }
+.phone-scroll-hint.is-gone { opacity: 0; pointer-events: none; }
+
+.phone-scroll-hint-text {
+  writing-mode: vertical-rl;
+  font-size: 13px;
+  letter-spacing: 0.3em;
+}
+
+.phone-scroll-hint svg {
+  width: 16px;
+  height: 16px;
+  animation: hintNudge 1.8s ease-in-out infinite;
+}
+
+@keyframes hintNudge {
+  0%, 100% { transform: translateY(0); opacity: 0.5; }
+  50%      { transform: translateY(6px); opacity: 1; }
+}
 
 /* --- 顶部封面：没有视频素材，用"现代版"卫星底图当视频封面，
    压暖色调 + 缓慢推近，模拟一段循环播放的片头 --- */

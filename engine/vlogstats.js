@@ -27,6 +27,7 @@ let onCloseCb = null;    // 关闭后要走的下一步（正常流程里是"回
 let viewMode = 'today';  // 'today' | 'total'，顶部胶囊切换本期/累计
 let favIndex = 0;        // 最热片段卡当前显示第几条素材（右侧按钮循环切换）
 let ctx = null;          // 本次打开用到的全部数据，见 open()
+let teardown = [];       // 挂在 window 上的监听（拖拽滚动），close() 时统一摘掉
 
 // ---------- 确定性随机 ----------
 
@@ -157,6 +158,7 @@ const ICONS = {
   heart: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 20.6S3.6 15.3 3.6 9.8A4.4 4.4 0 0 1 12 7.7a4.4 4.4 0 0 1 8.4 2.1c0 5.5-8.4 10.8-8.4 10.8z"/></svg>',
   user: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 12a4.2 4.2 0 1 0 0-8.4 4.2 4.2 0 0 0 0 8.4zm0 1.8c-4 0-7.2 2.2-7.2 5v1.4h14.4v-1.4c0-2.8-3.2-5-7.2-5z"/></svg>',
   film: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M3 4.5h18v15H3zM6 4.5v15M18 4.5v15M3 9.5h3M3 14.5h3M18 9.5h3M18 14.5h3" fill="none" stroke="currentColor" stroke-width="1.6"/></svg>',
+  chevronDown: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>',
   shuffle: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17 4l3 3-3 3M20 7H14.5L6 17H3M17 20l3-3-3-3M20 17h-5.5L12.6 14.4M3 7h3l1.6 2.1"/></svg>'
 };
 
@@ -305,7 +307,12 @@ function screenHTML() {
           <button class="glass pill" id="phone-btn-done">收起手机，回房休息</button>
         </div>
       </div>
-    </div>`;
+    </div>
+
+    <button class="phone-scroll-hint" id="phone-scroll-hint" type="button">
+      <span class="phone-scroll-hint-text">向下滑动查看更多</span>
+      ${ICONS.chevronDown}
+    </button>`;
 }
 
 /** 数字滚上去的入场动画；开了"减少动态效果"就直接显示终值。 */
@@ -357,6 +364,80 @@ function wire() {
   });
 
   wireFav();
+
+  const screen = document.getElementById('phone-screen');
+  wireDragScroll(screen);
+  wireScrollHint(screen);
+}
+
+/**
+ * 鼠标按住往上拖也能翻页——原本只能滚轮。触屏不接管（原生滚动本来就能划），
+ * 所以只认 pointerType === 'mouse'。
+ */
+function wireDragScroll(screen) {
+  let dragging = false;
+  let moved = false;   // 真的拖动过（超过 4px）才算拖拽，不然当普通点击放过去
+  let startY = 0;
+  let startTop = 0;
+
+  const onDown = e => {
+    if (e.pointerType !== 'mouse' || e.button !== 0) return;
+    dragging = true;
+    moved = false;
+    startY = e.clientY;
+    startTop = screen.scrollTop;
+  };
+
+  const onMove = e => {
+    if (!dragging) return;
+    // 手机整体被 --phone-scale 缩放过，鼠标走过的屏幕距离要除以缩放比才对得上内容里的距离
+    const scale = Number(getComputedStyle(overlay).getPropertyValue('--phone-scale')) || 1;
+    const dy = (e.clientY - startY) / scale;
+    if (!moved && Math.abs(dy) > 4) {
+      moved = true;
+      screen.classList.add('dragging');
+    }
+    if (moved) screen.scrollTop = startTop - dy;
+  };
+
+  const onUp = () => {
+    if (!dragging) return;
+    dragging = false;
+    screen.classList.remove('dragging');
+    if (!moved) return;
+    // 拖完松手浏览器还会补发一次 click，别让它落在按钮上（比如拖到一半正好停在"换一条"上）
+    const swallow = ev => { ev.stopPropagation(); ev.preventDefault(); };
+    window.addEventListener('click', swallow, true);
+    setTimeout(() => window.removeEventListener('click', swallow, true), 0);
+  };
+
+  screen.addEventListener('pointerdown', onDown);
+  window.addEventListener('pointermove', onMove);
+  window.addEventListener('pointerup', onUp);
+  window.addEventListener('pointercancel', onUp);
+  teardown.push(() => {
+    window.removeEventListener('pointermove', onMove);
+    window.removeEventListener('pointerup', onUp);
+    window.removeEventListener('pointercancel', onUp);
+  });
+}
+
+/** 手机左边那列"向下滑动查看更多"：点一下往下翻一屏，玩家自己滚了就淡出，不再出现。 */
+function wireScrollHint(screen) {
+  const hint = document.getElementById('phone-scroll-hint');
+  if (!hint) return;
+  if (screen.scrollHeight <= screen.clientHeight + 20) { // 内容没超出一屏就不提示
+    hint.classList.add('is-gone');
+    return;
+  }
+
+  const onScroll = () => {
+    if (screen.scrollTop <= 20) return;
+    hint.classList.add('is-gone');
+    screen.removeEventListener('scroll', onScroll);
+  };
+  screen.addEventListener('scroll', onScroll, { passive: true });
+  hint.addEventListener('click', () => screen.scrollBy({ top: 380, behavior: 'smooth' }));
 }
 
 /** 最热片段卡每次重渲染都要重新挂一次按钮（卡片整块被替换掉了）。 */
@@ -429,6 +510,8 @@ export function open(opts) {
 export function close() {
   if (!overlay) return;
   window.removeEventListener('resize', fitToViewport);
+  teardown.forEach(fn => fn());
+  teardown = [];
   overlay.classList.add('hidden');
   overlay.innerHTML = '';
   overlay.classList.remove('phone-glitch');
