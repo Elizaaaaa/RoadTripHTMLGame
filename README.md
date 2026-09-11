@@ -46,7 +46,8 @@ content/                 示例数据，非正式剧本，改这里不用碰 eng
   archive.json             示例档案库词条（含嵌套 [[]] 互跳、unlockedBy、linkedMainCase）
   endings.json             4 个结局的占位文案 + choiceLog 文案变体示例
 assets/maps/
-  white-lake-map.png      正式地图底图（白湖镇手绘图，1536x1024）
+  white-lake-map-now.png   底图：白湖镇「现在」的卫星照片（1536x1024），一开局看到的就是它
+  white-lake-map.png      手绘旧地图（同尺寸同取景），地点解锁后在该点周围墨迹洇开露出来
   placeholder-town-map.svg 已弃用的占位地图底图，留作对照，没有代码在引用它了
   hotspots.json            热点坐标表（1 个 basecamp + 10 个 investigation）
 tools/
@@ -60,7 +61,8 @@ _legacy-reference/        重构前参照的旧原型（另一个故事，仅供
 
 ## 内容结构速览（改故事只用改这几份 JSON）
 
-- **`assets/maps/hotspots.json`**：`x`/`y` 是百分比坐标（0-100），`type` 只能是 `"basecamp"`（唯一，加油站）或 `"investigation"`。想换地图就把 `mapImage` 指到你自己的图，热点用 `tools/coord-picker.html`（见上一节）重新量一遍。
+- **`assets/maps/hotspots.json`**：`x`/`y` 是百分比坐标（0-100），`type` 只能是 `"basecamp"`（唯一，加油站）或 `"investigation"`。想换地图就把 `mapImage`（卫星底图）和 `detailImage`（手绘旧地图）指到你自己的图，热点用 `tools/coord-picker.html`（见上一节）重新量一遍。
+  - **墨迹揭图**：`mapImage` 是一开局就看得见的底图，`detailImage` 只在已解锁地点周围像墨水洇开一样显示出来（`engine/map.js` 的「墨迹揭图」一节）。两张图必须同尺寸同取景，同一套 `x`/`y` 才对得上。可选字段 `inkRadius` 单独指定某个点洇开范围的半径（占图宽的百分比，不写默认 8.5），占地大的地点（白湖、废弃工厂）调大一点更自然。揭开过的区域不会随换天收回去。**所有热点都揭开过之后**，墨会从镇中心漫过整张纸，直接显示完整的 `detailImage`（连图廓、罗盘、比例尺一起），不再是一块块的。
 - **`content/days.json`**：按天数字符串做 key（`"1"`、`"2"`、`"3"`），`meta.totalDays` 决定跑几天后进入结局判定（当前固定 3 天）。每天包含：
   - `startMin`/`endMin`：当天的时间窗口（分钟数，0:00=0），决定 `clock-display` 起始值和"超时未归"的判定点；不写则各自兜底 480(08:00)/1200(20:00)，见 `engine/time.js`
   - `unlockedLocations`：当天地图上哪些 investigation 热点是解锁的（加油站永远解锁，不用列）

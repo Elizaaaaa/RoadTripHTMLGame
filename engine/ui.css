@@ -146,6 +146,18 @@ html, body {
   user-select: none;
 }
 
+/* 墨迹揭图层：盖在卫星底图上的一张 canvas，由 engine/map.js 画（白色墨渍 + source-in
+   手绘地图），只有解锁过的地点周围才洇出手绘地图。跟 .map-image-box 同大小，
+   所以缩放/平移时跟底图一起动；宽高属性（画布像素）由 JS 按手绘图原始尺寸设置。 */
+.map-ink {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  user-select: none;
+}
+
 .hotspot {
   position: absolute;
   transform: translate(-50%, -50%);
