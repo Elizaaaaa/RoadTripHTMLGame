@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<!--
+  quake-preview.html —— 地震演出 + 结局逐字/逐句浮现的预览工具。
+  调 engine/quake.js / engine/reveal.js / ui.css 里那两节动效时不用真的玩到第 2 天上午，
+  直接开这个页面按按钮看：左上角能挑震级、改振幅和时长，也能单独预览结局窗口的浮现节奏。
+
+  要用本地静态服务器打开（跟游戏本体一样，file:// 下 ES module 会被拦），在项目根目录
+  执行 npx serve . 或 python -m http.server，再访问 /tools/quake-preview.html。
+
+  注：这里的"地图"只是一张底图 + 一个假状态栏，够看抖动就行；游戏里抖的是整个 #app。
+-->
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>地震演出预览</title>
+<link rel="stylesheet" href="../engine/ui.css">
+<style>
+  #panel {
+    position: fixed;
+    top: 12px;
+    left: 12px;
+    z-index: 500;
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    flex-wrap: wrap;
+    max-width: 92vw;
+    padding: 10px 12px;
+    background: rgba(28, 28, 30, 0.92);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 10px;
+    font-size: 13px;
+  }
+  #panel select, #panel input { font: inherit; color: inherit; background: #1c1c1c; border: 1px solid #3a3a3a; border-radius: 6px; padding: 3px 6px; }
+  #panel input[type="number"] { width: 68px; }
+  #panel .sep { width: 1px; height: 20px; background: #3a3a3a; }
+  #fake-map { flex: 1; background: #12110f url("../assets/maps/white-lake-map-now.png") center/cover no-repeat; }
+</style>
+</head>
+<body>
+  <div id="app">
+    <header id="status-bar">
+      <div class="menu-left"><span class="menu-brand">●</span><span>第 2 天</span></div>
+      <div class="menu-right"><span class="menu-item">理智：清醒</span><span class="menu-item">10:33</span></div>
+    </header>
+    <main id="fake-map"></main>
+  </div>
+
+  <div id="panel">
+    <label>震级 <select id="sel-mag"><option value="6.4">6.4（前震）</option><option value="7.1" selected>7.1（主震）</option><option value="">自定义</option></select></label>
+    <label>振幅 <input type="number" id="in-amp" value="12" min="1" max="40"> px</label>
+    <label>时长 <input type="number" id="in-ms" value="1900" min="200" max="6000" step="100"> ms</label>
+    <button class="btn" id="btn-quake">播放地震</button>
+    <span class="sep"></span>
+    <button class="btn" id="btn-quake-window">地震 + 事件窗口</button>
+    <button class="btn" id="btn-ending">结局窗口（逐字/逐句）</button>
+  </div>
+
+  <div id="modal-overlay" class="modal-overlay hidden"><div id="modal-box" class="modal-box"></div></div>
+
+  <div id="quake-overlay" class="hidden" aria-hidden="true">
+    <div class="quake-veil"></div>
+    <div class="quake-dust"></div>
+  </div>
+
+<script type="module">
+import * as quake from '../engine/quake.js';
+import * as reveal from '../engine/reveal.js';
+
+const $ = id => document.getElementById(id);
+const box = $('modal-box');
+
+// 面板上选了预设震级就把振幅/时长同步成预设值，方便对照着微调
+const PRESET = { '6.4': { amp: 5, ms: 1100 }, '7.1': { amp: 12, ms: 1900 } };
+$('sel-mag').addEventListener('change', () => {
+  const p = PRESET[$('sel-mag').value];
+  if (p) { $('in-amp').value = p.amp; $('in-ms').value = p.ms; }
+});
+
+function opts() {
+  return { amp: Number($('in-amp').value), shakeMs: Number($('in-ms').value), dust: Number($('in-amp').value) > 8 ? 1 : 0.55 };
+}
+function closeModal() { $('modal-overlay').classList.add('hidden'); box.innerHTML = ''; }
+function renderWindow(title, bodyHTML) {
+  box.innerHTML = `
+    <div class="mac-titlebar">
+      <div class="mac-traffic"><button class="mac-dot mac-dot-red" id="x"></button><span class="mac-dot mac-dot-yellow"></span><span class="mac-dot mac-dot-green"></span></div>
+      <div class="mac-title">${title}</div>
+    </div>
+    <div class="mac-body">${bodyHTML}</div>`;
+  $('x').addEventListener('click', closeModal);
+  $('modal-overlay').classList.remove('hidden');
+}
+
+$('btn-quake').addEventListener('click', () => quake.play(opts()));
+
+const QUAKE_TEXT = '先是脚底下传来一声闷响，像有人在很深的地方拖动什么很重的东西。紧接着整条街都晃了起来。屋檐上积了不知多少年的白色粉尘簌簌往下落，落在肩上是咸的。晃动停下来的时候，镇子安静得不像话——家家户户的灯还亮着，和刚才一模一样。';
+$('btn-quake-window').addEventListener('click', () => {
+  closeModal();
+  quake.play(opts()).then(() => renderWindow('大约十点半', `
+    <div class="event-text">${reveal.clauses(QUAKE_TEXT, s => s)}</div>
+    <button class="btn" id="btn-event-continue">继续</button>`));
+});
+
+// 跟 main.js showEnding 里那套延迟排布保持一致：标题逐字 → 正文逐句 → 按钮
+$('btn-ending').addEventListener('click', () => {
+  const title = '带着真相逃出';
+  const text = '车子重新开上公路时，油表灯已经在闪。后视镜里的镇子越来越小，但你们知道，那些拍下来的东西不会再被埋回去了。';
+  const bodyBase = 0.15 + [...title].length * 0.05 + 0.2;
+  const btnBase = bodyBase + reveal.clauseCount(text) * 0.18 + 0.25;
+  renderWindow('旅程 · 结局', `
+    <div class="ending-title">${reveal.chars(title)}</div>
+    <div class="event-text" style="--rv-base:${bodyBase.toFixed(2)}s">${reveal.clauses(text, s => s)}</div>
+    <div class="rv-block" style="--rv-base:${btnBase.toFixed(2)}s"><button class="btn">继续</button></div>`);
+});
+</script>
+</body>
+</html>

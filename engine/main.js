@@ -16,6 +16,8 @@ import * as signalSys from './signal.js';
 import * as dialogueSys from './dialogue.js';
 import * as basecampSys from './basecamp.js';
 import * as endingSys from './ending.js';
+import * as quakeSys from './quake.js';
+import * as revealSys from './reveal.js';
 import {
   createInitialState, loadState, saveState, clearSave,
   snapshotDay, hasDayCheckpoint, restoreDayCheckpoint
@@ -61,7 +63,7 @@ async function boot() {
   wireMapControls();
 
   if (state.ending) {
-    showEnding(state.ending);
+    showEnding(state.ending, { intro: false }); // 读档进来的已完结存档：不重放地震演出，直接显示结局
   } else if (!maybeShowDayIntro()) {
     refreshAll();
   }
@@ -255,6 +257,7 @@ function showSignalToast(text) {
 function onHotspotClick(id) {
   const hotspot = mapSys.getHotspot(id);
   if (!hotspot) return;
+  if (quakeSys.isPlaying()) return; // 地震演出期间（落灰层已经挡住点击）不再接受新的交互，双保险
   // "被黑暗吞噬"结局（每天都适用）：不在跨过十二点的那次交互里立刻判定——那次
   // 交互本身的内容（事件文本/掷骰）还是正常走完，pendingDayOver 先留着；等玩家
   // 在十二点之后真的再点一次地图（不管点哪，去哪都一样），才在这次交互一开始
@@ -294,22 +297,33 @@ function visitInvestigationSpot(id) {
   // 每次交互固定推进 1 小时，不管事件内容里写的 time 是多少——内容里的 time
   // 字段现在只是给作者自己看的"大概几点发生"注释，引擎不读它，避免不同事件
   // 之间耗时忽长忽短（有的 30 分钟有的 4 小时）导致的体感不一致。
+  const beforeMin = state.minutes;
   pendingDayOver = timeSys.addMinutes(state, timeSys.TRAVEL_TIME_MIN, dayContent);
 
-  // 信号闪现：每次探索调查地点都额外判定一次，见 design-doc.md 3.3 节
-  const shownIds = state.signalToday.map(s => s.id);
-  const flare = signalSys.tryTrigger(dayContent, shownIds);
-  if (flare) {
-    signalSys.record(state, flare);
-    showSignalToast(flare.text);
-  }
+  // 这一小时里跨过了定时全局事件（两次地震）的话，先把它演完再接着走这个地点本来的
+  // 事件——"到点就发生，跟玩家当时在哪无关"，见下面 playTimedEvents 一节。
+  const timed = findTimedEvents(dayContent, beforeMin, state.minutes);
 
-  state.triggeredEvents.push(event.id);
-  if (event.type === 'diceCheck') {
-    showDiceEvent(event);
-  } else {
-    showTextEvent(event);
-  }
+  const enterSpotEvent = () => {
+    // 信号闪现：每次探索调查地点都额外判定一次，见 design-doc.md 3.3 节。
+    // 放在定时事件之后：地震演出要花两三秒，横幅先弹会在抖动里白白过期。
+    const shownIds = state.signalToday.map(s => s.id);
+    const flare = signalSys.tryTrigger(dayContent, shownIds);
+    if (flare) {
+      signalSys.record(state, flare);
+      showSignalToast(flare.text);
+    }
+
+    state.triggeredEvents.push(event.id);
+    if (event.type === 'diceCheck') {
+      showDiceEvent(event);
+    } else {
+      showTextEvent(event);
+    }
+  };
+
+  if (timed.length) playTimedEvents(timed, enterSpotEvent);
+  else enterSpotEvent();
 }
 
 // ---------- 发布之后的"手机数据页" ----------
@@ -403,12 +417,65 @@ function recordEventLog(event, text, note) {
   const hotspot = mapSys.getHotspot(event.loc);
   state.todayEventLog.push({
     eventId: event.id,
-    loc: event.loc,
-    locName: hotspot ? hotspot.name : event.loc,
+    loc: event.loc || null,
+    // 定时全局事件（地震）不挂在任何地点上，没有 loc 可查，回顾列表里标成"全镇"
+    locName: hotspot ? hotspot.name : (event.locName || '全镇'),
     minutes: state.minutes,
     text,
     note: note || null
   });
+}
+
+// ---------- 定时全局事件（days.json 的 timedEvents） ----------
+//
+// 跟普通事件的区别：不挂在任何地点上，到点就发生。对应 design-doc.md 1.6 节的两次
+// 地震——它们是"封印正在衰减"在现实世界留下的物理签名，玩家做什么都拦不住，所以
+// 既不能写成某个地点的 events（去没去过那儿都得震），也不该由玩家的行为来解释。
+//
+// 判定方式：每次交互推进时间之后，看这一小时有没有跨过 timedEvents[].at 配的分钟数
+// （左开右闭 (before, after]）。引擎每次交互固定推进 60 分钟，所以实际弹出会落在跨过
+// 该时刻的那一次交互上，文案要写得容得下这点误差（"大约十点半"而不是"10 点 33 分整"）。
+//
+// 触发记录跟普通事件、每天的开场旁白共用 state.triggeredEvents（id 别跟它们撞车），
+// 所以"重新度过今日"回退到当天存档点之后，那一天的地震会重新再来一次。
+
+function findTimedEvents(dayContent, fromMin, toMin) {
+  // 哪些时刻被跨过了是纯时间问题，放在 time.js 里（顺带能脱离 DOM 单测）；
+  // 这里只补一道"已经触发过的不再来一次"的过滤。
+  return timeSys.crossedTimedEvents(dayContent, fromMin, toMin)
+    .filter(e => !state.triggeredEvents.includes(e.id));
+}
+
+/**
+ * 依次播放定时事件，全部播完才走 onDone（通常是"接着进这个地点本来的事件"）。
+ * 每条的顺序是：地震演出（配了 quake 才有）→ 一拍死寂 → 事件窗口（正文按换行分页、
+ * 逐句淡入）→ 下一条。演出期间弹窗还没开，抖的是地图那一层，落灰层顺带挡住点击。
+ */
+function playTimedEvents(list, onDone) {
+  const [current, ...rest] = list;
+  if (!current) {
+    onDone();
+    return;
+  }
+
+  state.triggeredEvents.push(current.id);
+  applyOutcomeEffects(current); // clue / sanityCost 这些字段跟普通事件共用同一套处理
+  recordEventLog(current, current.text, current.note || null);
+
+  const showWindow = () => {
+    openModal('event');
+    playEventPages(current.id, splitSegments(current.text), pageHTML => renderWindow(current.title || '……', `
+      <div class="event-text">${pageHTML}</div>
+      <button class="btn" id="btn-event-continue">继续</button>
+    `), () => {
+      closeModal();
+      refreshAll();
+      playTimedEvents(rest, onDone);
+    }, { reveal: true });
+  };
+
+  if (current.quake) quakeSys.play(current.quake).then(showWindow);
+  else showWindow();
 }
 
 // ---------- 文本事件 ----------
@@ -499,11 +566,15 @@ function splitSegments(text) {
  * bindKeywordClicks 内部按容器去重，重复调用不会重复绑定。翻到最后一页再点"继续"
  * 才会触发 onFinish（真正关窗，走 afterInvestigation）。每页翻页前要不要等 QQ/BB
  * 讨论完，见 maybePlayDialogue/dialogue.js 的 afterSegment。
+ *
+ * opts.reveal：正文逐句淡入（见 reveal.js / ui.css 的 .rv-clause）。默认关——普通调查
+ * 事件一屏文字看完就走，每次都浮现一遍反而拖节奏；只给地震这类"要有分量"的场合开。
  */
-function playEventPages(eventId, segments, renderPage, onFinish) {
+function playEventPages(eventId, segments, renderPage, onFinish, opts = {}) {
   let idx = 0;
+  const parse = seg => kw.parseKeywords(seg, k => archiveSys.isUnlocked(state, k));
   const showPage = () => {
-    const html = kw.parseKeywords(segments[idx], k => archiveSys.isUnlocked(state, k));
+    const html = opts.reveal ? revealSys.clauses(segments[idx], parse) : parse(segments[idx]);
     const body = renderPage(html);
     bindKeywordClicks(body);
     document.getElementById('btn-event-continue').addEventListener('click', () => {
@@ -745,29 +816,84 @@ function advanceDay() {
   if (!maybeShowDayIntro()) refreshAll();
 }
 
-function showEnding(id) {
-  const text = endingSys.getText(id, state, content.endings);
+/**
+ * 结局窗口。分页播出：正文（按换行分段）→ 玩家点"继续"→ 后日谈（endings.json 的
+ * epilogue）。design-doc.md 1.4 节要求结局②必须两段式——正文那一段是一场不留破绽的
+ * 胜利，翻转只能等玩家主动点过"继续"之后才在后日谈里揭晓，所以这两段在这里也是分开
+ * 的页，绝不拼成一整块一次性倒给玩家。
+ *
+ * 演出：标题逐字上浮 → 正文逐句淡入 → 按钮最后出现（见 reveal.js / ui.css 的 .rv-*）。
+ * 这是全篇唯一一处用得起这种慢节奏的地方——普通事件正文照旧整段直出。
+ *
+ * @param {object} [opts]
+ * @param {boolean} [opts.intro] 传 false 表示"直接把窗口摆出来"，跳过 endings.json 里
+ *        配的 quake 演出。读档进来时用（见 boot），免得每次刷新页面都重震一遍。
+ */
+function showEnding(id, opts = {}) {
+  const ending = endingSys.getText(id, state, content.endings);
   // "陷入疯狂"是当天中途的意外死亡，不是整个旅程走完后的真结局——比起强制从第 1 天
   // 重开，更合理的是直接问要不要重新度过今天（复用"重新度过今日"的存档点机制，见
   // state.js snapshotDay/restoreDayCheckpoint），"重新开始"整个旅程只作为次要选项保留。
   const isNightMadness = id === 'night_madness';
-  renderWindow('旅程 · 结局', `
-    <div class="ending-title">${text.title}</div>
-    <div class="event-text">${text.text.replace(/\n/g, '<br>')}</div>
-    ${isNightMadness ? `<button class="btn" id="btn-redo-day">重新度过今日（第 ${state.day} 天）</button>` : ''}
-    <button class="btn ${isNightMadness ? 'btn-gray' : ''}" id="btn-restart" ${isNightMadness ? 'style="margin-top:8px;"' : ''}>重新开始${isNightMadness ? '整个旅程' : ''}</button>
-  `);
-  openModal('ending');
-  if (isNightMadness) {
-    document.getElementById('btn-redo-day').addEventListener('click', () => applyTimeRewind(state.day));
-  }
-  document.getElementById('btn-restart').addEventListener('click', () => {
-    clearSave();
-    state = createInitialState(content.days['1']);
-    snapshotDay(state); // 补一份第 1 天存档点，不然重开这一局之后"重新度过今日"会找不到存档
-    closeModal();
-    refreshAll();
-  });
+
+  const pages = [
+    ...splitSegments(ending.text).map(text => ({ text, epilogue: false })),
+    ...(ending.epilogue ? splitSegments(ending.epilogue).map(text => ({ text, epilogue: true })) : [])
+  ];
+
+  const parse = seg => kw.parseKeywords(seg, k => archiveSys.isUnlocked(state, k));
+  let idx = 0;
+
+  const showPage = () => {
+    const page = pages[idx];
+    const isLast = idx === pages.length - 1;
+    const titleText = page.epilogue ? '后日谈' : ending.title;
+    // 三层延迟首尾相接：后一层的起点 = 前一层播完的时刻 + 一点停顿。
+    // 每字 0.05s、每句 0.18s 跟 ui.css 里 .rv-char / .rv-clause 的默认步长对齐，改那边记得同步。
+    const bodyBase = 0.15 + [...titleText].length * 0.05 + 0.2;
+    const btnBase = bodyBase + revealSys.clauseCount(page.text) * 0.18 + 0.25;
+
+    const body = renderWindow('旅程 · 结局', `
+      <div class="ending-title${page.epilogue ? ' ending-title-epilogue' : ''}">${revealSys.chars(titleText)}</div>
+      <div class="event-text" style="--rv-base:${bodyBase.toFixed(2)}s">${revealSys.clauses(page.text, parse)}</div>
+      <div class="rv-block" style="--rv-base:${btnBase.toFixed(2)}s">
+        ${!isLast ? '<button class="btn" id="btn-ending-continue">继续</button>' : ''}
+        ${isLast && isNightMadness ? `<button class="btn" id="btn-redo-day">重新度过今日（第 ${state.day} 天）</button>` : ''}
+        ${isLast ? `<button class="btn ${isNightMadness ? 'btn-gray' : ''}" id="btn-restart" ${isNightMadness ? 'style="margin-top:8px;"' : ''}>重新开始${isNightMadness ? '整个旅程' : ''}</button>` : ''}
+      </div>
+    `);
+    bindKeywordClicks(body);
+
+    if (!isLast) {
+      document.getElementById('btn-ending-continue').addEventListener('click', () => {
+        idx += 1;
+        showPage();
+      });
+      return;
+    }
+
+    if (isNightMadness) {
+      document.getElementById('btn-redo-day').addEventListener('click', () => applyTimeRewind(state.day));
+    }
+    document.getElementById('btn-restart').addEventListener('click', () => {
+      quakeSys.cancel(); // 保险：演出还没收尾就重开时，把抖动/落灰一并复位
+      clearSave();
+      state = createInitialState(content.days['1']);
+      snapshotDay(state); // 补一份第 1 天存档点，不然重开这一局之后"重新度过今日"会找不到存档
+      closeModal();
+      refreshAll();
+    });
+  };
+
+  const start = () => {
+    openModal('ending');
+    showPage();
+  };
+
+  // 结局自己配了 quake 就先震一次再出窗口——design-doc.md 1.6 节：无论走到哪个结局，
+  // 现实世界都一定会记录到那两次地震，结局文本里那句新闻是固定收尾。
+  if (ending.quake && opts.intro !== false) quakeSys.play(ending.quake).then(start);
+  else start();
 }
 
 // ---------- 剪辑编辑器共用素材展示 helper ----------

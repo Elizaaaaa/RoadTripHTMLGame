@@ -493,6 +493,8 @@ button:disabled:hover, .btn:disabled:hover { background: rgba(255, 255, 255, 0.0
 .sidebar-item .notif-dot { position: static; margin-left: 6px; flex-shrink: 0; }
 
 .ending-title { font-size: 1.4em; color: var(--accent); margin-bottom: 10px; }
+/* 后日谈那一页的小标题：结局正文已经给过一次"落幕"，这里要更轻，别抢正文 */
+.ending-title-epilogue { font-size: 1.05em; color: #9a9a9a; letter-spacing: 0.08em; }
 
 /* 关键词高亮：未收集显示蓝色链接（提示"点它"），点击收集词条后变灰（仿"访问过的链接"）。
    class 名沿用 kw-locked/kw-unlocked（对应 archive.isUnlocked 状态，JS 不用改），
@@ -953,4 +955,171 @@ body.sanity-breaking::after {
 @keyframes orientationRotate {
   0%, 100% { transform: rotate(0deg); }
   50% { transform: rotate(90deg); }
+}
+
+/* ===================================================================
+   地震演出（engine/quake.js）
+   对应 design-doc.md 1.6 节的两次现实地震。要的是"没头没尾地晃了一下、
+   然后一切安静下来"，不是爆炸式的高潮：振幅从头衰减到尾，尾帧回到原位。
+
+   只动 transform / opacity 两个合成器属性——理由跟上面理智闪烁那一节一样，
+   祖先上挂 filter 会把 .map-content 的 will-change:transform 废掉。
+   动画是一次性的，quake.js 跑完就把 .quaking 摘掉，不留常驻开销。
+
+   振幅由 --quake-amp 传进来（JS 按震级设），关键帧里用倍数写出衰减包络，
+   这样同一份关键帧既能演 M6.4 的"晃一下"也能演 M7.1 的"站不住"。
+   统一带 scale(1.015)：#app 被平移时边缘会露出 body 底色，靠这点放大顶出屏幕外。
+   =================================================================== */
+
+/* 世界（状态栏 + 地图）：横向为主、纵向略带，尾巴上补一点旋转，避免看起来像纯平移 */
+@keyframes quakeShakeWorld {
+  0%   { transform: scale(1.015) translate3d(0, 0, 0) rotate(0deg); }
+  4%   { transform: scale(1.015) translate3d(calc(var(--quake-amp) * -1), calc(var(--quake-amp) * 0.45), 0) rotate(-0.28deg); }
+  9%   { transform: scale(1.015) translate3d(calc(var(--quake-amp) * 0.95), calc(var(--quake-amp) * -0.35), 0) rotate(0.22deg); }
+  15%  { transform: scale(1.015) translate3d(calc(var(--quake-amp) * -0.8), calc(var(--quake-amp) * -0.5), 0) rotate(-0.18deg); }
+  22%  { transform: scale(1.015) translate3d(calc(var(--quake-amp) * 0.85), calc(var(--quake-amp) * 0.3), 0) rotate(0.24deg); }
+  30%  { transform: scale(1.015) translate3d(calc(var(--quake-amp) * -0.62), calc(var(--quake-amp) * 0.4), 0) rotate(-0.15deg); }
+  38%  { transform: scale(1.015) translate3d(calc(var(--quake-amp) * 0.7), calc(var(--quake-amp) * -0.25), 0) rotate(0.16deg); }
+  47%  { transform: scale(1.015) translate3d(calc(var(--quake-amp) * -0.45), calc(var(--quake-amp) * -0.3), 0) rotate(-0.1deg); }
+  56%  { transform: scale(1.015) translate3d(calc(var(--quake-amp) * 0.5), calc(var(--quake-amp) * 0.22), 0) rotate(0.11deg); }
+  65%  { transform: scale(1.015) translate3d(calc(var(--quake-amp) * -0.3), calc(var(--quake-amp) * 0.16), 0) rotate(-0.07deg); }
+  74%  { transform: scale(1.015) translate3d(calc(var(--quake-amp) * 0.26), calc(var(--quake-amp) * -0.14), 0) rotate(0.05deg); }
+  83%  { transform: scale(1.012) translate3d(calc(var(--quake-amp) * -0.15), 0, 0) rotate(-0.03deg); }
+  92%  { transform: scale(1.008) translate3d(calc(var(--quake-amp) * 0.08), 0, 0) rotate(0deg); }
+  100% { transform: scale(1) translate3d(0, 0, 0) rotate(0deg); }
+}
+
+/* 弹窗（那台"玩家自己的电脑"）：振幅约为世界的六成，相位跟世界错开，两层不同步才像真的 */
+@keyframes quakeShakeWindow {
+  0%   { transform: translate3d(0, 0, 0) rotate(0deg); }
+  6%   { transform: translate3d(calc(var(--quake-amp) * 0.6), calc(var(--quake-amp) * -0.3), 0) rotate(0.2deg); }
+  14%  { transform: translate3d(calc(var(--quake-amp) * -0.55), calc(var(--quake-amp) * 0.32), 0) rotate(-0.22deg); }
+  24%  { transform: translate3d(calc(var(--quake-amp) * 0.48), calc(var(--quake-amp) * 0.2), 0) rotate(0.14deg); }
+  35%  { transform: translate3d(calc(var(--quake-amp) * -0.4), calc(var(--quake-amp) * -0.22), 0) rotate(-0.12deg); }
+  48%  { transform: translate3d(calc(var(--quake-amp) * 0.3), calc(var(--quake-amp) * 0.14), 0) rotate(0.08deg); }
+  62%  { transform: translate3d(calc(var(--quake-amp) * -0.2), calc(var(--quake-amp) * -0.1), 0) rotate(-0.05deg); }
+  78%  { transform: translate3d(calc(var(--quake-amp) * 0.12), 0, 0) rotate(0deg); }
+  100% { transform: translate3d(0, 0, 0) rotate(0deg); }
+}
+
+body.quaking #app {
+  animation: quakeShakeWorld var(--quake-shake-ms, 1300ms) cubic-bezier(0.36, 0.07, 0.19, 0.97) both;
+  will-change: transform;
+}
+
+body.quaking #modal-box {
+  animation: quakeShakeWindow var(--quake-shake-ms, 1300ms) cubic-bezier(0.36, 0.07, 0.19, 0.97) both;
+  will-change: transform;
+}
+
+/* 落灰层：白湖镇的灰是盐碱粉尘，所以偏冷的米白而不是土黄。
+   z-index 250 盖过 toast(200)，压在竖屏提示(9999)之下；pointer-events:none 不挡点击。
+   淡入快（0.18s，跟着第一下晃动一起来）、淡出慢（1.4s，在死寂里慢慢沉）。 */
+#quake-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 250;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 1.4s ease-out;
+}
+
+/* 演出期间（quake.js 加的 class，含抖完那一拍死寂）让落灰层接管点击，
+   挡住"抖到一半玩家又点了一下地图"这种两条流程叠在一起的情况 */
+body.quake-blocking #quake-overlay { pointer-events: auto; }
+
+#quake-overlay.quake-dust-on {
+  opacity: var(--quake-dust, 1);
+  transition: opacity 0.18s ease-out;
+}
+
+/* 从上往下压的一层灰幕 + 四角压暗，制造"顶上在掉东西"的方向感 */
+.quake-veil {
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(to bottom, rgba(216, 209, 193, 0.17), rgba(216, 209, 193, 0.05) 36%, transparent 68%),
+    radial-gradient(120% 90% at 50% 40%, transparent 55%, rgba(0, 0, 0, 0.35) 100%);
+}
+
+/* 粉尘颗粒：纯 CSS 渐变点阵，不用图。
+   关键是别让人看出"这是一张平铺的网格"：用四层互质的间距（37/53/89/139）叠起来，
+   每层再错开 background-position，两组颗粒（本体和 ::after）以不同速度下落形成视差——
+   几层错位的规则网格叠在一起，眼睛就读成随机的了。颗粒边缘用较宽的渐变过渡收住，
+   免得在 1x 屏上变成一颗颗硬邦邦的死像素。 */
+.quake-dust {
+  position: absolute;
+  inset: -30% 0 -10% 0;
+  background-image:
+    radial-gradient(circle, rgba(236, 231, 216, 0.42) 0.6px, transparent 2.2px),
+    radial-gradient(circle, rgba(236, 231, 216, 0.26) 1.1px, transparent 3.4px);
+  background-size: 37px 37px, 89px 89px;
+  background-position: 0 0, 13px 31px;
+  animation: quakeDustFall 3.4s linear infinite;
+  will-change: transform;
+}
+
+/* 第二组颗粒：更稀、更慢，跟上面那组错开位置，叠出视差 */
+.quake-dust::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-image:
+    radial-gradient(circle, rgba(236, 231, 216, 0.34) 0.8px, transparent 2.6px),
+    radial-gradient(circle, rgba(230, 226, 212, 0.2) 1.4px, transparent 4.2px);
+  background-size: 53px 53px, 139px 139px;
+  background-position: 21px 7px, 67px 43px;
+  animation: quakeDustFall 5.6s linear infinite;
+}
+
+@keyframes quakeDustFall {
+  from { transform: translate3d(0, -12%, 0); }
+  to   { transform: translate3d(0, 24%, 0); }
+}
+
+/* ===================================================================
+   逐字 / 逐句浮现（engine/reveal.js）
+   缓动统一 cubic-bezier(0.22,1,0.36,1)：先快后极慢地停住，收尾"落定"感最强。
+   延迟 = 基准 + 序号 × 步长，序号写在每个 span 的 --i 上，由 reveal.js 生成。
+   =================================================================== */
+
+.rv-char {
+  display: inline-block;
+  animation: rvCharUp 0.7s cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation-delay: calc(var(--rv-base, 0.15s) + var(--i, 0) * var(--rv-step, 0.05s));
+}
+
+@keyframes rvCharUp {
+  from { opacity: 0; transform: translateY(0.5em); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* 行内只淡入不位移：inline 元素上的 transform 无效，改 inline-block 又会让长句不能折行 */
+.rv-clause {
+  animation: rvFadeIn 0.7s cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation-delay: calc(var(--rv-base, 0.15s) + var(--i, 0) * var(--rv-step, 0.18s));
+}
+
+@keyframes rvFadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+/* 需要"整段往上浮"时套在块级元素上，位移只做一次，不摊到每个行内 span */
+.rv-block {
+  animation: rvBlockUp 0.7s cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation-delay: calc(var(--rv-base, 0.15s) + var(--i, 0) * var(--rv-step, 0.18s));
+}
+
+@keyframes rvBlockUp {
+  from { opacity: 0; transform: translateY(16px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* 系统开了"减少动态效果"：位移和抖动全关，只保留淡入，信息一样能读到 */
+@media (prefers-reduced-motion: reduce) {
+  .quake-dust { animation: none; }
+  .rv-char { animation-name: rvFadeIn; }
+  .rv-block { animation-name: rvFadeIn; }
+  .rv-char, .rv-clause, .rv-block { animation-duration: 0.4s; }
 }

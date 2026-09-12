@@ -24,6 +24,14 @@ export function decide(state) {
 /**
  * 取结局文案，按 choiceLog 里出现过的 tag 匹配 variants，命中的都会附加在结尾。
  * endingsContent 来自 content/endings.json。
+ *
+ * epilogue（后日谈）是独立的一段，不跟正文拼在一起：结局窗口先把正文播完，玩家点
+ * "继续"才揭晓后日谈（见 main.js showEnding）。design-doc.md 1.4 节要求结局②必须写成
+ * 两段式——正文那一段是一场不留破绽的胜利，翻转只能放在后日谈里，所以引擎层面这两段
+ * 必须分开存、分开播，不能指望作者把翻转塞进正文最后一行。
+ *
+ * quake 原样透传给 engine/quake.js：配了就在结局窗口出现之前先震一次（1.6 节：无论
+ * 走到哪个结局，现实世界都一定会记录到那两次地震）。
  */
 export function getText(endingId, state, endingsContent) {
   const entry = endingsContent[endingId];
@@ -36,6 +44,8 @@ export function getText(endingId, state, endingsContent) {
 
   return {
     title: entry.title,
-    text: [entry.text, ...extra].join('\n\n')
+    text: [entry.text, ...extra].join('\n\n'),
+    epilogue: entry.epilogue || null,
+    quake: entry.quake || null
   };
 }

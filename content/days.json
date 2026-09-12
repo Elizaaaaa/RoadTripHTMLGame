@@ -101,6 +101,22 @@
     "endMin": 1440,
     "unlockedLocations": ["square", "library", "lake"],
 
+    "timedEvents": [
+      {
+        "_comment": "M6.4 前震：现实中是 2019-07-04 当地时间上午 10:33 前后、震中 Searles Valley（对应 design-doc.md 1.6 节）。at=633 就是 10:33；引擎每次交互固定推进 60 分钟，所以实际会落在跨过这一刻的那次交互上，文案因此只写'大约十点半'。它是封印衰减的物理签名，不是玩家做了什么的后果——别在文案里给因果。",
+        "id": "quake_m64",
+        "day": 2,
+        "at": 633,
+        "title": "大约十点半",
+        "quake": {
+          "magnitude": "6.4"
+        },
+        "clue": "quake_footage",
+        "sanityCost": 2,
+        "text": "先是脚底下传来一声闷响，像有人在很深的地方拖动什么很重的东西。\n紧接着整条街都晃了起来。路边的电线来回甩，屋檐上积了不知多少年的白色粉尘簌簌往下落，落在肩上是咸的。QQ 一把扶住墙，BB 死死抱着相机没撒手，镜头一直在拍。\n晃动停下来的时候，镇子安静得不像话。没有狗叫，没有警报，没有一扇窗被推开——家家户户的灯还亮着，和刚才一模一样。\n手机照例没有信号。刚才那到底是几级、震中在哪儿，只能等回加油站上网再说。"
+      }
+    ],
+
     "events": [
       {
         "id": "e13",
@@ -174,6 +190,37 @@
 
     "dialogues": [
       {
+        "id": "dlg_quake1",
+        "afterEvent": "quake_m64",
+        "afterSegment": 2,
+        "lines": [
+          {
+            "speaker": "qq",
+            "text": "地震了地震了地震了——我拍到了！你看见没有！"
+          },
+          {
+            "speaker": "bb",
+            "text": "看见了。你先站稳。"
+          },
+          {
+            "speaker": "qq",
+            "text": "刚那下少说五级吧？加州不是老震吗，怎么一点动静都没有。"
+          },
+          {
+            "speaker": "bb",
+            "text": "……没有人出来。"
+          },
+          {
+            "speaker": "qq",
+            "text": "啊？"
+          },
+          {
+            "speaker": "bb",
+            "text": "整条街，一个出来看的人都没有。"
+          }
+        ]
+      },
+      {
         "id": "dlg4",
         "afterEvent": "e13",
         "afterSegment": 0,
@@ -217,6 +264,24 @@
     "startMin": 480,
     "endMin": 1440,
     "unlockedLocations": ["square", "library", "lake", "cemetery", "theSink"],
+
+    "timedEvents": [
+      {
+        "_comment": "M7.1 主震：现实中是 2019-07-05 当地时间 20:19 前后，受创最重的是 Trona。at=1219 即 20:19，正好压在第 3 天高潮抉择前后。注意当天要走到 20:19 需要玩家有足够多的可探索点位；万一没走到也不算漏——三个结局的 epilogue 里都有那条固定的新闻收尾（见 content/endings.json 与 design-doc.md 1.6 节）。",
+        "id": "quake_m71",
+        "day": 3,
+        "at": 1219,
+        "title": "晚上八点过后",
+        "quake": {
+          "magnitude": "7.1"
+        },
+        "sanityCost": 5,
+        "unlocksArchive": [
+          "dryLake"
+        ],
+        "text": "这一次没有前兆。\n地面像被什么东西从底下顶了一记，人直接被掀得站不住。远处有玻璃成片地碎，声音却传得很慢，像隔着一层很厚的水。\n[[干湖|dryLake]]那个方向传来一声很长的闷响，龟裂的湖床上扬起一大片白色的尘，久久没有落下来。\n等一切停下来，镇子还是那个镇子。灯亮着，窗帘拉着，没有一个人出来看。"
+      }
+    ],
 
     "events": [
       {

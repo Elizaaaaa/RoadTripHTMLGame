@@ -30,6 +30,18 @@ export function addMinutes(state, delta, dayContent) {
   return isDayOver(state, dayContent);
 }
 
+/**
+ * 这次时间推进跨过了当天哪些"定时全局事件"（dayContent.timedEvents，见 design-doc.md 1.6 节的两次地震）。
+ * 区间是左开右闭 (fromMin, toMin]：同一个时刻只会被某一次推进算作"跨过"一次，来回推进也不会重复命中。
+ * 只按时间挑，不管玩家在哪、也不管有没有触发过——"触发过就不再触发"由调用方拿 state 过滤（见 main.js findTimedEvents）。
+ * @returns {object[]} 命中的事件，按 at 从早到晚排好序
+ */
+export function crossedTimedEvents(dayContent, fromMin, toMin) {
+  return ((dayContent && dayContent.timedEvents) || [])
+    .filter(e => typeof e.at === 'number' && e.at > fromMin && e.at <= toMin)
+    .sort((a, b) => a.at - b.at);
+}
+
 export function isDayOver(state, dayContent) {
   return state.minutes >= getDayRange(dayContent).end;
 }

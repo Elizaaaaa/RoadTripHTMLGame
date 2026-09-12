@@ -53,6 +53,13 @@
        内容由 engine/vlogstats.js 整块生成，样式见 engine/phone.css。 -->
   <div id="phone-overlay" class="phone-overlay hidden"></div>
 
+  <!-- 地震演出的落灰层：平时 hidden，engine/quake.js 播放时才显示（见 ui.css「地震演出」一节）。
+       盖在所有弹窗之上、不挡点击，内容全是 CSS 渐变，不需要任何图片素材。 -->
+  <div id="quake-overlay" class="hidden" aria-hidden="true">
+    <div class="quake-veil"></div>
+    <div class="quake-dust"></div>
+  </div>
+
   <div id="toast" class="hidden"></div>
 
   <!-- 手机竖屏时盖住全部内容，提示转横屏；纯 CSS 媒体查询控制显隐，不依赖 JS，也不挡桌面端窄窗口 -->
