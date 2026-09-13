@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<!--
+  paper-preview.html —— 折叠纸条演出的预览工具。
+  调 engine/paper.js / ui.css 里「折叠纸条演出」那一节时不用真的玩到第 2 天早上，
+  开这个页面按按钮就能看：左上角能改落下、翻开、字迹逐句淡入这三段的时长。
+  "事件窗口 + 纸条"那颗按钮连带演出前后的观感一起看——游戏里纸条就是摊在弹窗之上的。
+
+  要用本地静态服务器打开（跟游戏本体一样，file:// 下 ES module 会被拦），在项目根目录
+  执行 npx serve . 或 python -m http.server，再访问 /tools/paper-preview.html。
+-->
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>折叠纸条预览</title>
+<link rel="stylesheet" href="../engine/ui.css">
+<style>
+  #panel {
+    position: fixed;
+    top: 12px;
+    left: 12px;
+    z-index: 500;
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    flex-wrap: wrap;
+    max-width: 92vw;
+    padding: 10px 12px;
+    background: rgba(28, 28, 30, 0.92);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 10px;
+    font-size: 13px;
+  }
+  #panel input, #panel textarea { font: inherit; color: inherit; background: #1c1c1c; border: 1px solid #3a3a3a; border-radius: 6px; padding: 3px 6px; }
+  #panel input[type="number"] { width: 66px; }
+  #panel textarea { width: 320px; height: 46px; resize: vertical; }
+  #panel .sep { width: 1px; height: 20px; background: #3a3a3a; }
+  #fake-map { flex: 1; background: #12110f url("../assets/maps/white-lake-map-now.png") center/cover no-repeat; }
+</style>
+</head>
+<body>
+  <div id="app">
+    <header id="status-bar">
+      <div class="menu-left"><span class="menu-brand">●</span><span>第 2 天</span></div>
+      <div class="menu-right"><span class="menu-item">理智：清醒</span><span class="menu-item">08:00</span></div>
+    </header>
+    <main id="fake-map"></main>
+  </div>
+
+  <div id="panel">
+    <label>落下 <input type="number" id="in-intro" value="320" min="0" max="2000" step="20"> ms</label>
+    <label>翻开 <input type="number" id="in-unfold" value="760" min="0" max="3000" step="20"> ms</label>
+    <label>字句间隔 <input type="number" id="in-text" value="300" min="0" max="2000" step="20"> ms</label>
+    <button class="btn" id="btn-paper">翻开纸条</button>
+    <span class="sep"></span>
+    <button class="btn" id="btn-window">事件窗口 + 纸条</button>
+    <textarea id="in-text-body">请旅客注意：不要靠近[[工厂|alkaliWorks]]，零点前一定要回到这里。这是为了您的安全考虑。</textarea>
+  </div>
+
+  <div id="modal-overlay" class="modal-overlay hidden"><div id="modal-box" class="modal-box"></div></div>
+
+  <div id="paper-overlay" class="paper-overlay hidden">
+    <div class="paper-stage">
+      <div class="paper-sheet">
+        <div class="paper-fold paper-fold-top"></div>
+        <div class="paper-fold paper-fold-bot"></div>
+        <div class="paper-body"></div>
+      </div>
+    </div>
+    <div class="paper-hint">点一下收起</div>
+  </div>
+
+<script type="module">
+import * as paper from '../engine/paper.js';
+import * as kw from '../engine/keyword-parser.js';
+
+const $ = id => document.getElementById(id);
+const box = $('modal-box');
+// 预览里没有记事本，关键词一律当"还没收集"渲染成蓝色可点的样子
+const parse = s => kw.parseKeywords(s, () => false);
+
+function opts() {
+  return {
+    text: $('in-text-body').value,
+    parse,
+    introMs: Number($('in-intro').value),
+    unfoldMs: Number($('in-unfold').value),
+    textStepMs: Number($('in-text').value)
+  };
+}
+
+$('btn-paper').addEventListener('click', () => paper.play(opts()));
+
+// 游戏里的样子：窗口正文停在"桌上压着一张纸条"这一页，纸条翻在它之上，
+// 收起之后玩家点窗口里那颗"继续"才往下走（见 main.js playEventPages）。
+$('btn-window').addEventListener('click', () => {
+  box.innerHTML = `
+    <div class="mac-titlebar">
+      <div class="mac-traffic"><button class="mac-dot mac-dot-red" id="x"></button><span class="mac-dot mac-dot-yellow"></span><span class="mac-dot mac-dot-green"></span></div>
+      <div class="mac-title">事件记录</div>
+    </div>
+    <div class="mac-body">
+      <div class="event-text">从房间出来，走廊里依旧空无一人。QQ去查看前台，值班的位置还是空的，登记册上压着一张对折了好几道的纸条，折角上写着「108」——正是他们的房间号。</div>
+      <button class="btn" id="btn-event-continue">继续</button>
+    </div>`;
+  $('x').addEventListener('click', () => $('modal-overlay').classList.add('hidden'));
+  $('btn-event-continue').addEventListener('click', () => $('modal-overlay').classList.add('hidden'));
+  $('modal-overlay').classList.remove('hidden');
+  const btn = $('btn-event-continue');
+  btn.disabled = true;
+  paper.play(opts()).then(() => { btn.disabled = false; });
+});
+</script>
+</body>
+</html>

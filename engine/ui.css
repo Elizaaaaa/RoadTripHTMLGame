@@ -1123,3 +1123,376 @@ body.quake-blocking #quake-overlay { pointer-events: auto; }
   .rv-block { animation-name: rvFadeIn; }
   .rv-char, .rv-clause, .rv-block { animation-duration: 0.4s; }
 }
+
+/* ===================================================================
+   折叠纸条演出（engine/paper.js）
+   一张对折过的纸条在屏幕中央翻开，摊平之后字迹才逐句淡入，点一下整张淡出。
+   用在"玩家亲手读一张纸"的场合（第 2 天早上前台那张留言），不是所有事件都配——
+   到处摊纸就不叫演出了。
+
+   几何见 paper.js 顶部注释：.paper-sheet 是摊平后的整张纸，高度由 .paper-body 里的
+   文字撑开；两块 .paper-fold 各占它的一半，上半块不动，下半块绕中间那道折痕从 180°
+   转回 0°（自由边朝屏幕这一侧扫出去，看着才像把纸掀开、而不是从背面翻出来）。
+   折着的时候下半块正好盖在上半块上，起手画面就是一张半高的小纸包。
+
+   纸包中心 ≠ 摊平后的中心（纸包只占整张纸的上半截），所以 .paper-sheet 起手先往下
+   坐四分之一张纸的距离让纸包落在屏幕正中，再在翻开的同时抬回 0——纸包不跑位，摊平
+   之后整张纸正好居中。这个位移和"落下淡入"分在两层元素上（.paper-sheet / .paper-stage）：
+   同一个元素上两个动画都动 transform 只会后者覆盖前者，合成不了。
+
+   纸面底色是一整块渐变被切成两半：每块的 background-size 都是 100% 200%、再按自己
+   在整张纸上的位置错开 background-position，两块拼起来才是连续的一张纸。
+
+   只动 transform / opacity：翻页转到侧面的明暗变化用 .paper-fold-bot::after 盖一层
+   黑色渐变跟着淡出，不用 filter: brightness()（理由同上面地震演出/理智闪烁两节）。
+   =================================================================== */
+
+.paper-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 170; /* 盖过弹窗(100)、对话气泡(150)、手机数据页(160)，压在 toast(200) 之下 */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.55);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  opacity: 0;
+  /* 翻开期间照样吃掉点击：底下那颗"继续"按钮这时候不该点得到（paper.js 要等字出来
+     才接受点击，这里只是别让点击穿到弹窗上去） */
+  cursor: default;
+}
+
+.paper-overlay.paper-open { animation: paperVeilIn var(--paper-intro-ms, 320ms) ease-out both; }
+.paper-overlay.paper-armed { cursor: pointer; }
+/* 收起：整层（纸 + 字 + 遮罩）一起淡出，别让字先没了纸还留着 */
+.paper-overlay.paper-closing { animation: paperVeilOut var(--paper-out-ms, 460ms) ease-in both; }
+
+@keyframes paperVeilIn  { from { opacity: 0; } to { opacity: 1; } }
+@keyframes paperVeilOut { from { opacity: 1; } to { opacity: 0; } }
+
+/* 外层只管"纸包落到桌面上"这一下，位移留给里层的 .paper-sheet */
+.paper-stage { position: relative; }
+
+.paper-sheet {
+  position: relative;
+  width: min(430px, 82vw);
+  /* 上下留白给得比左右狠得多：纸要比字高出一大截才像一张对折过的信纸，而不是一张便签条。
+     整张纸的高度 = 上下留白 + .paper-body（文字块，带 min-height 兜底），留白对称长出来，
+     所以纸加高时文字仍然落在纸的正中、不会往上跑。 */
+  padding: 96px 32px;
+  perspective: 1400px; /* 挂在翻页的父元素上，下半块才有透视，不然 180° 看着像纯缩放 */
+  transform: translateY(25%); /* 静止态＝折着：往下坐四分之一张纸，让纸包落在屏幕正中 */
+}
+
+/* 所有动画都挂在 .paper-open 下（paper.js 显示这一层时才加）：不加 class 时纸条停在
+   "折着"的静止状态，页面加载时不会偷跑一遍，cancel() 摘掉 class 也就立刻复位。 */
+.paper-open .paper-stage {
+  animation: paperStageIn var(--paper-intro-ms, 320ms) cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+/* 翻开的同时把纸抬回正中，跟下半块同一条缓动、同一段时间，看着才是一个动作 */
+.paper-open .paper-sheet {
+  animation: paperSheetRise var(--paper-unfold-ms, 760ms) cubic-bezier(0.32, 0.9, 0.3, 1) both;
+  animation-delay: var(--paper-intro-ms, 320ms);
+}
+
+@keyframes paperStageIn {
+  from { opacity: 0; transform: translateY(-14px) scale(0.94); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes paperSheetRise {
+  from { transform: translateY(25%); }
+  to   { transform: translateY(0); }
+}
+
+/* 整张纸摊平之后才出现的投影：画在一个跟纸等大的空盒子上，垫在两块纸面之下。
+   投影不能挂在每块纸面上——两块各投一次，折痕位置会出现一道假阴影。 */
+.paper-open .paper-sheet::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  box-shadow: 0 22px 55px rgba(0, 0, 0, 0.55);
+  opacity: 0;
+  animation: paperFadeIn 0.5s ease-out both;
+  animation-delay: calc(var(--paper-intro-ms, 320ms) + var(--paper-unfold-ms, 760ms));
+}
+
+@keyframes paperFadeIn  { from { opacity: 0; } to { opacity: 1; } }
+@keyframes paperFadeOut { from { opacity: 1; } to { opacity: 0; } }
+
+.paper-fold {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 50%;
+  z-index: 1;
+  background:
+    linear-gradient(175deg, rgba(255, 255, 255, 0.55), rgba(255, 255, 255, 0) 45%),
+    radial-gradient(120% 85% at 50% 0%, #fbf6ea 0%, #f2ead8 62%, #e6dac0 100%);
+  background-size: 100% 200%; /* 两块共用同一块渐变，各取自己那一半 */
+  backface-visibility: visible; /* 折着的时候看到的是纸背面，纸背面也是纸 */
+}
+
+/* 折到侧面时压上去的暗面：转角越大越暗，摊平就没了。跟着 transform 一起动，不用 filter。 */
+.paper-fold::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, rgba(26, 20, 10, 0.55), rgba(26, 20, 10, 0.18));
+  opacity: 0;
+}
+
+/* 上半块：从头到尾不动，折着的时候它就是那张小纸包。
+   多给 0.6% 高度垫在折痕底下，免得摊平后两块之间露出一条发丝缝——多出来的那点
+   被 z-index 更高的下半块盖住，看不见。 */
+.paper-fold-top {
+  top: 0;
+  height: 50.6%;
+  background-position: 0 0;
+}
+
+/* 折着时那张小纸包自己的投影：借上半块的 ::after 当投影盒子（它跟纸包同样大小），
+   摊平之后淡掉、交给 .paper-sheet::before 那道整张纸的投影。动的是 opacity 不是
+   box-shadow，省掉一个逐帧重绘的属性动画。 */
+.paper-fold-top::after {
+  background: none;
+  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.5);
+  opacity: 1;
+}
+
+.paper-open .paper-fold-top::after {
+  animation: paperFadeOut 0.5s ease-out both;
+  animation-delay: calc(var(--paper-intro-ms, 320ms) + var(--paper-unfold-ms, 760ms));
+}
+
+/* 下半块：绕折痕（它自己的上边）从 180° 转回 0°。180° 时正好翻上去盖住上半块，
+   转回来的路上自由边从屏幕这一侧扫过去；折痕的压痕画在它的上边缘。 */
+.paper-fold-bot {
+  top: 50%;
+  background-position: 0 100%;
+  z-index: 2; /* 折着的时候压在上半块上 */
+  transform-origin: 50% 0%;
+  transform: rotateX(180deg);
+  border-top: 1px solid rgba(120, 98, 60, 0.22);
+  box-shadow: inset 0 9px 10px -10px rgba(90, 70, 38, 0.55);
+}
+
+.paper-open .paper-fold-bot {
+  animation: paperUnfold var(--paper-unfold-ms, 760ms) cubic-bezier(0.32, 0.9, 0.3, 1) both;
+  animation-delay: var(--paper-intro-ms, 320ms);
+}
+
+@keyframes paperUnfold {
+  from { transform: rotateX(180deg); }
+  to   { transform: rotateX(0deg); }
+}
+
+.paper-open .paper-fold-bot::after {
+  animation: paperShade var(--paper-unfold-ms, 760ms) ease-out both;
+  animation-delay: var(--paper-intro-ms, 320ms);
+}
+
+@keyframes paperShade {
+  0%   { opacity: 0.85; }
+  55%  { opacity: 0.4; }
+  100% { opacity: 0; }
+}
+
+/* 纸上的字：压在两块纸面之上，高度由它撑开整张纸（所以纸条多长由文案说了算）。
+   楷体是 macOS / Windows 都自带的，不用外挂字体文件，也就不破坏"零美术素材"。
+   逐句淡入靠 reveal.js 的 .rv-clause，起始延迟由 paper.js 按摊开时长写进 --rv-base。 */
+.paper-body {
+  position: relative;
+  z-index: 3;
+  min-height: 4.2em; /* 兜底：字太少时纸条也别瘦成一条 */
+  color: #2b2318;
+  font-family: "Kaiti SC", "STKaiti", "KaiTi", "楷体", "FZKai-Z03S", serif;
+  font-size: 17px;
+  line-height: 2;
+  letter-spacing: 0.03em;
+  text-align: justify;
+  text-shadow: 0 0.5px 0 rgba(255, 255, 255, 0.5); /* 墨迹压进纸纤维里的一点点厚度 */
+}
+
+/* 纸上的关键词链接：默认那套（亮蓝 / 灰）配在纸色上太跳，这里按纸面重配。
+   语义不变：kw-locked = 还没收进记事本（可点），kw-unlocked = 已收集。 */
+.paper-body .kw-locked { color: #1a5fb4; }
+.paper-body .kw-unlocked { color: #8a7d64; }
+
+/* "点一下收起"：写在纸外面（不是纸上），等字开始出现、真的可以点了才淡进来 */
+.paper-hint {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 9%;
+  text-align: center;
+  font-size: 12px;
+  letter-spacing: 0.16em;
+  color: rgba(235, 228, 214, 0.5);
+  opacity: 0;
+  transition: opacity 0.6s ease-out;
+  pointer-events: none;
+}
+
+.paper-hint.paper-hint-on { opacity: 1; }
+
+/* 矮屏（横过来的手机）：纸条整体收一号，别把提示挤出屏幕 */
+@media (max-height: 480px) {
+  .paper-sheet { width: min(380px, 74vw); padding: 52px 24px; }
+  .paper-body { font-size: 15px; line-height: 1.85; min-height: 3.6em; }
+  .paper-hint { bottom: 5%; }
+}
+
+/* 系统开了"减少动态效果"：paper.js 已经把摊开时长压成 0，这里再把落下的位移、
+   抬回正中的补偿一并去掉，只剩淡入——纸一上来就是平的、就在正中，字照样能读到。 */
+@media (prefers-reduced-motion: reduce) {
+  .paper-open .paper-stage { animation-name: paperFadeIn; }
+  .paper-open .paper-sheet { animation: none; transform: translateY(0); }
+  .paper-open .paper-fold-bot { animation-duration: 1ms; }
+  .paper-open .paper-fold-bot::after { animation-duration: 1ms; }
+}
+
+/* ===================================================================
+   扫描演出（engine/scan.js）
+   理智低位时地图上随机亮起的取景框：框住一块底图、打成马赛克、配乱码读数和引线。
+
+   整层挂在 .map-image-box 里（跟 .hotspot 同级、DOM 顺序在后所以压在热点之上），
+   所以缩放/平移是被 .map-content 的 transform 一起带走的，不需要任何跟随逻辑。
+   注意别给这一层加 z-index：热点没写 z-index，全靠 DOM 顺序分层，这里一旦写了
+   就得把热点也一起排，反而更脆。
+
+   只动 transform / opacity。马赛克本身是一张 N×M 的小 canvas 被 CSS 撑满框，
+   放大交给 image-rendering: pixelated——是静态的栅格化提示，不是每帧要算的滤镜，
+   跟上面地震/理智闪烁两节禁的 filter 不是一回事。
+
+   引线的 stroke-dashoffset 严格说不是合成器属性，但这里最多 4 条 1px 细线、
+   一次性播完，重绘范围就是那几条线所在的窄带，不会触发整棵子树重新栅格化。
+   =================================================================== */
+
+.scan-layer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none; /* 环境效果，不能挡住底下热点的点击 */
+  user-select: none;
+  opacity: 1;
+  transition: opacity var(--scan-fade, 800ms) ease-out;
+}
+
+/* scan.js 在收尾时加这个 class，整层一起淡出 */
+.scan-layer.scan-out { opacity: 0; }
+
+.scan-links {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+
+/* viewBox 是 0-100 被非等比拉伸的，线宽只能靠 vector-effect: non-scaling-stroke
+   （scan.js 给每条线都加了），stroke-width 在这里是被拉变形的，不要用它调粗细。
+   同理别用 stroke-dasharray 做「描画进场」：虚线长度也是沿路径按用户单位算的，
+   在被拉伸的坐标系里横线和竖线的虚线节距会不一样。这里只淡入。 */
+.scan-links line {
+  stroke: rgba(232, 238, 240, 0.58);
+  stroke-width: 3; /* 比框线（4px）细一级，引线不抢框的分量。有 non-scaling-stroke 兜着，这就是屏幕上的 3px，地图放大到 3 倍也不变粗 */
+  animation: scanLinkFadeIn 420ms ease-out var(--scan-delay, 0ms) both;
+}
+
+.scan-box {
+  position: absolute;
+  /* 框线用 outline 不用 border：border 会把 box-sizing 卷进来，框的百分比尺寸就跟
+     scan.js 算马赛克源矩形时用的百分比对不上了，马赛克会整体偏掉一个线宽。
+     outline 画在盒子外沿、不参与布局，加粗多少都不会推开里面的马赛克。 */
+  outline: 4px solid rgba(236, 241, 242, 0.82);
+  outline-offset: 0;
+  animation: scanBoxLock var(--scan-grow, 280ms) cubic-bezier(0.22, 1, 0.36, 1) var(--scan-delay, 0ms) both;
+}
+
+/* 马赛克：小 canvas 撑满框，放大时不插值 */
+.scan-pix {
+  display: block;
+  width: 100%;
+  height: 100%;
+  image-rendering: pixelated;
+  opacity: 0.94; /* 压一点点，让方块跟底图之间还留着一丝"同一张图"的关系 */
+}
+
+/* 读数居中压在框正中。铺满整个框再用 flex 居中，而不是 left/top 定位 + translate：
+   框的尺寸是随机的，只有让标签跟框等大，文字才会始终落在框心。
+   保留 nowrap：长串乱码在窄框里会朝两边均匀溢出去，这正是参考图里的样子——
+   .scan-box 没有 overflow:hidden，溢出的部分照常显示，不会被切。 */
+.scan-label {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 13px;
+  line-height: 1;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  color: rgba(238, 242, 243, 0.82);
+  /* 文字现在压在马赛克最花的地方，投影要比贴边时更兜得住：一层近距离描边 + 一层散开的暗晕 */
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.9), 0 0 7px rgba(0, 0, 0, 0.75);
+}
+
+/* bleedWords 那一条：要一眼看出跟周围的读数不是一类东西，所以给足饱和度的红。
+   之前用的 rgba(255,186,170) 太淡，叠上暗投影之后在屏幕上直接读成白色了。
+   再补一层红色外发光，让它在马赛克上也能立住。 */
+.scan-label.scan-bleed {
+  color: rgb(255, 58, 44);
+  font-weight: 700; /* 等宽字体没粗体时浏览器会合成，混在里面的全角/CJK 字符也一样走合成粗体 */
+  letter-spacing: 0.06em;
+  text-shadow:
+    0 1px 3px rgba(0, 0, 0, 0.95),
+    0 0 8px rgba(255, 40, 30, 0.55);
+}
+
+/* 「锁定」：从大一圈收进去咬住目标。transform-origin 用 center，四边一起收。 */
+@keyframes scanBoxLock {
+  0%   { opacity: 0; transform: scale(1.5); }
+  60%  { opacity: 1; }
+  100% { opacity: 1; transform: scale(1); }
+}
+
+@keyframes scanLinkFadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+/* 系统开了"减少动态效果"：scan.js 已经把错峰和 grow 时长都传成 0，这里再把关键帧
+   换成纯淡入——框还是会出现、读数还是能读到，只是不再有缩放和逐个弹出。
+   读数重抽也在 scan.js 那边关掉了。 */
+.scan-layer.scan-reduced .scan-box {
+  animation-name: scanBoxFadeIn;
+  animation-duration: 260ms;
+}
+
+@keyframes scanBoxFadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+/* 调试按钮（index.html 的 #debug-buttons，只在 ?debug=1 时显示）。
+   故意做得跟正式 UI 不一样：虚线框 + 暖黄，一眼能看出"这不是游戏的一部分"，
+   免得截图给别人看时被当成正式功能。 */
+.menu-pill-debug {
+  border: 1px dashed rgba(255, 190, 80, 0.55);
+  color: rgba(255, 205, 120, 0.92);
+}
+.menu-pill-debug:hover {
+  background: rgba(255, 190, 80, 0.16);
+  border-color: rgba(255, 190, 80, 0.8);
+  color: #ffd98a;
+}
+/* 调试面板的倒计时读数，跟按钮同一套暖黄 */
+.debug-status {
+  font-variant-numeric: tabular-nums; /* 等宽数字，倒计时跳动时不左右抖 */
+  color: rgba(255, 205, 120, 0.85);
+  opacity: 0.9;
+}

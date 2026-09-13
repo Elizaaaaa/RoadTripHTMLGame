@@ -18,6 +18,8 @@ import * as basecampSys from './basecamp.js';
 import * as endingSys from './ending.js';
 import * as quakeSys from './quake.js';
 import * as revealSys from './reveal.js';
+import * as paperSys from './paper.js';
+import * as scanSys from './scan.js';
 import {
   createInitialState, loadState, saveState, clearSave,
   snapshotDay, hasDayCheckpoint, restoreDayCheckpoint
@@ -61,6 +63,7 @@ async function boot() {
   mapSys.init(document.getElementById('map-viewport'), mapData, onHotspotClick);
   wireStatusButtons();
   wireMapControls();
+  wireDebugButtons();
 
   if (state.ending) {
     showEnding(state.ending, { intro: false }); // 读档进来的已完结存档：不重放地震演出，直接显示结局
@@ -128,6 +131,7 @@ function refreshAll() {
   const dayContent = getDayContent();
   if (dayContent) mapSys.updateHotspotStates(state, dayContent);
   updateNotebookDot();
+  syncScanLoop(); // 理智跌破/回到阈值时，在这里开关低理智的扫描演出循环
 
   saveState(state);
 }
@@ -154,6 +158,7 @@ function closeModal() {
   currentModal = null;
   closeClipInfo(); // 保险起见：主窗口关掉时，叠在它上面的素材简介小窗也一并收掉
   clearDialogueBubbles(); // 同上：QQ/BB 对话气泡（以及还没播完的定时器）也一并清掉
+  paperSys.cancel();      // 同上：还摊在屏幕中央的纸条（以及它的定时器）也一并收掉
 }
 
 /** 剪辑台里左键点开某段素材，弹出一个小窗显示它的内容简介，叠在剪辑台窗口之上。 */
@@ -257,7 +262,7 @@ function showSignalToast(text) {
 function onHotspotClick(id) {
   const hotspot = mapSys.getHotspot(id);
   if (!hotspot) return;
-  if (quakeSys.isPlaying()) return; // 地震演出期间（落灰层已经挡住点击）不再接受新的交互，双保险
+  if (quakeSys.isPlaying() || paperSys.isPlaying()) return; // 演出期间（落灰层/纸条层已经挡住点击）不再接受新的交互，双保险
   // "被黑暗吞噬"结局（每天都适用）：不在跨过十二点的那次交互里立刻判定——那次
   // 交互本身的内容（事件文本/掷骰）还是正常走完，pendingDayOver 先留着；等玩家
   // 在十二点之后真的再点一次地图（不管点哪，去哪都一样），才在这次交互一开始
@@ -375,6 +380,129 @@ function afterInvestigation() {
   // pendingDayOver 留到下一次交互开头再判定，见 onHotspotClick。
 }
 
+// ---------- 扫描演出的触发：理智低位时的常驻循环 ----------
+// 演出本身在 engine/scan.js，那个模块只管怎么演、不判断什么时候演（跟 quake.js 一个分工）。
+// 什么时候演写在这里。
+//
+// 这不是"事件的后果"，是挂在世界时钟上的环境效果：理智一跌破阈值循环就开着，自己按
+// 随机间隔一次次地放，理智回升到阈值以上立刻停。所以它跟玩家在做什么无关——正是这一点
+// 让它比"每次关掉窗口闪一下"更瘆人：玩家算不出下一次在什么时候。
+
+const SCAN_SANITY_MAX = 30;     // 理智低于这个值循环就开着。注意比 sanity.js 的 BREAKING
+                                // 档（<35）更严一点：濒崩刚进门就满地图闪框会太廉价，
+                                // 留 5 点缓冲，让玩家先在"濒崩但世界还正常"里待一会儿。
+const SCAN_GAP_MIN_MS = 20000;  // 两次之间的间隔，每次重新随机
+const SCAN_GAP_MAX_MS = 60000;
+const SCAN_COUNT_MIN = 8;       // 每次亮几个框，每次重新随机
+const SCAN_COUNT_MAX = 15;
+
+let scanTimer = 0;  // 非 0 表示循环开着；只在本模块里流转，不进存档（读档后由 refreshAll 重新拉起）
+let scanNextAt = 0; // 下一次扫描的时间戳。只给调试面板做倒计时读，游戏逻辑不依赖它——
+                    // 但留着它值：不然"循环到底有没有在跑"从外面完全看不出来，
+                    // 首次触发又要等 20~60 秒，很容易误判成功能坏了。
+
+const randInt = (a, b) => a + Math.floor(Math.random() * (b - a + 1));
+
+/**
+ * 按理智值开/关扫描循环。每次 refreshAll() 都会调一次——理智值的每一次变动最后都会走到
+ * refreshAll，挂在这里就不用在每个改理智的地方各记一笔。幂等，重复调不会叠出第二个定时器。
+ */
+function syncScanLoop() {
+  const shouldRun = !state.ending && state.sanity < SCAN_SANITY_MAX;
+  if (shouldRun && !scanTimer) scheduleScan();
+  else if (!shouldRun && scanTimer) stopScanLoop();
+}
+
+function stopScanLoop() {
+  clearTimeout(scanTimer);
+  scanTimer = 0;
+  scanNextAt = 0;
+  scanSys.cancel(); // 理智刚回升时，正亮着的那一批也立刻收掉，不让它演完
+}
+
+function scheduleScan() {
+  const gap = randInt(SCAN_GAP_MIN_MS, SCAN_GAP_MAX_MS);
+  scanNextAt = Date.now() + gap;
+  scanTimer = setTimeout(runScan, gap);
+}
+
+function runScan() {
+  scanTimer = 0;
+  // 定时器排下来的这段时间里理智可能已经回升了（也可能进了结局），这里再确认一次
+  if (state.ending || state.sanity >= SCAN_SANITY_MAX) return;
+
+  // 弹窗盖着地图、或正在演地震/纸条时，这一次就跳过、不往后补。它是挂在世界时钟上的
+  // 环境效果，玩家在读窗口的时候错过了就是错过了；补演反而会退化成"每次关窗口都闪一下"，
+  // 也就是这次改动要甩掉的那个手感。
+  if (!currentModal && !quakeSys.isPlaying() && !paperSys.isPlaying()) playScanNow();
+
+  scheduleScan(); // 不管这次演没演，都接着排下一次
+}
+
+/**
+ * 调试按钮组：只在地址栏带 ?debug=1 时露出来（index.html 里默认 hidden）。用 URL 开关
+ * 而不是常量，是因为不用改代码、也不会有人手滑把"改回 false"这一步忘了带进正式版本。
+ *
+ * - 「演一次扫描」：立刻放一次，参数跟循环完全一样（都走 playScanNow）。只验演出本身。
+ * - 「立刻触发循环」：把排着的定时器提前到现在，直接跑 runScan()。跟上一个的区别是它走的是
+ *   真正的循环代码路径（含"演完接着排下一次"），所以能验循环逻辑，而不只是验演出能放。
+ * - 「理智→20 / →80」：在"循环该开"和"循环该停"两个状态之间来回切。
+ * - 右边的倒计时：显示下一次扫描还有几秒。没有它的话，循环首次触发要等 20~60 秒、
+ *   中间零反馈，等个二三十秒没动静就会误判成功能坏了。
+ */
+function wireDebugButtons() {
+  if (new URLSearchParams(location.search).get('debug') !== '1') return;
+  const group = document.getElementById('debug-buttons');
+  if (!group) return;
+  group.classList.remove('hidden');
+
+  const sanityBtn = document.getElementById('btn-debug-sanity');
+  const statusEl = document.getElementById('debug-scan-status');
+  const syncLabel = () => {
+    sanityBtn.textContent = state.sanity < SCAN_SANITY_MAX ? '🧠 理智→80' : '🧠 理智→20';
+  };
+  syncLabel();
+
+  document.getElementById('btn-debug-scan').addEventListener('click', () => playScanNow());
+
+  document.getElementById('btn-debug-tick').addEventListener('click', () => {
+    if (!scanTimer) { showToast('循环没开着——先点「理智→20」'); return; }
+    clearTimeout(scanTimer); // 把排着的那一次取消掉，改成现在就跑，避免等下重复触发
+    scanTimer = 0;
+    runScan();               // 走真正的循环路径：演一次 + 自动排下一次
+  });
+
+  sanityBtn.addEventListener('click', () => {
+    state.sanity = state.sanity < SCAN_SANITY_MAX ? 80 : 20;
+    refreshAll(); // 循环的开关就挂在这里面的 syncScanLoop()
+    syncLabel();
+    showToast(state.sanity < SCAN_SANITY_MAX
+      ? `理智 → ${state.sanity}，扫描循环已开启（每 ${SCAN_GAP_MIN_MS / 1000}~${SCAN_GAP_MAX_MS / 1000} 秒一次）`
+      : `理智 → ${state.sanity}，扫描循环已停止`);
+  });
+
+  // 倒计时。只读 scanNextAt，不碰循环本身——调试面板不该影响被调试的东西。
+  setInterval(() => {
+    if (!scanTimer) { statusEl.textContent = '循环未开启'; return; }
+    const left = Math.max(0, Math.ceil((scanNextAt - Date.now()) / 1000));
+    statusEl.textContent = `下次扫描 ${left}s`;
+  }, 500);
+}
+
+/**
+ * 按当前地图数据放一次扫描。循环和调试按钮都走这里，所以调试时看到的就是玩家会看到的
+ * ——参数只有一份，不会出现"调试面板调好了、游戏里不是这个样子"。
+ */
+function playScanNow() {
+  const mapData = content.map || {};
+  return scanSys.play({
+    points: mapData.scanPoints || [],
+    bleedWords: mapData.bleedWords || [],
+    bleedChance: mapData.bleedChance, // 没写就是 undefined，scan.js 那边会退回自己的默认值
+    count: randInt(SCAN_COUNT_MIN, SCAN_COUNT_MAX)
+  });
+}
+
 /**
  * 事件/掷骰结果里共用的效果字段：clue / clues / sanityCost / unlocksLocation。
  * clue 是单条线索（vlog 素材）的老写法；clues（数组）用于一个事件一次性发放多条线索，
@@ -471,7 +599,7 @@ function playTimedEvents(list, onDone) {
       closeModal();
       refreshAll();
       playTimedEvents(rest, onDone);
-    }, { reveal: true });
+    }, { reveal: true, paperSegments: current.paperSegments });
   };
 
   if (current.quake) quakeSys.play(current.quake).then(showWindow);
@@ -490,7 +618,7 @@ function showTextEvent(event) {
   `), () => {
     closeModal();
     afterInvestigation();
-  });
+  }, { paperSegments: event.paperSegments });
 }
 
 // ---------- 掷骰事件 ----------
@@ -544,7 +672,7 @@ function finishDice(event, result) {
   `), () => {
     closeModal();
     afterInvestigation();
-  });
+  }, { paperSegments: result.outcome.paperSegments });
 }
 
 // ---------- 事件正文分页 ----------
@@ -569,24 +697,52 @@ function splitSegments(text) {
  *
  * opts.reveal：正文逐句淡入（见 reveal.js / ui.css 的 .rv-clause）。默认关——普通调查
  * 事件一屏文字看完就走，每次都浮现一遍反而拖节奏；只给地震这类"要有分量"的场合开。
+ *
+ * opts.paperSegments：哪几页做成"折叠纸条"（days.json 里事件的 paperSegments 字段）。
+ * 这几页的正文不进窗口，改成一张折着的纸条在屏幕中央摊开、摊平之后字迹才淡入，玩家
+ * 点一下收起（见 paper.js）。文字仍然写在同一段 text 里，所以调查回顾照样收录全文。
  */
 function playEventPages(eventId, segments, renderPage, onFinish, opts = {}) {
   let idx = 0;
   const parse = seg => kw.parseKeywords(seg, k => archiveSys.isUnlocked(state, k));
+  const paperSegments = opts.paperSegments || [];
+
+  const advance = () => {
+    if (idx < segments.length - 1) {
+      idx += 1;
+      showPage();
+    } else {
+      onFinish();
+    }
+  };
+
   const showPage = () => {
+    // 配成纸条页的那一页不进窗口：窗口停在上一页不动（上一页正文刚交代完"桌上压着一张
+    // 纸条"），纸条在屏幕正中央摊开，纸条层顺带挡住底下那颗"继续"。玩家点掉纸条之后
+    // 再播这一页绑的 QQ/BB 讨论，讨论完，上一页留下的那颗"继续"就是下一步——它闭包里
+    // 读的是最新的 idx，所以点下去该翻页翻页、该结束结束，不用另外补按钮。
+    if (paperSegments.includes(idx) && idx > 0) {
+      const btn = document.getElementById('btn-event-continue');
+      if (btn) btn.disabled = true; // 纸条挡住了鼠标，但键盘还能按到它，顺手锁上
+      paperSys.play({ text: segments[idx], parse, onReady: bindKeywordClicks }).then(() => {
+        if (btn) btn.disabled = false;
+        maybePlayDialogue(eventId, idx, segments.length); // 绑了讨论就会再锁一次，播完才放开
+      });
+      return;
+    }
+    // 纸条页不能是第一页：窗口里得先有一页把纸条摆在场景里，纸条才有地方摊、"继续"才有
+    // 着落。真配成第 0 页就退化成普通正文，顺带在控制台提醒内容作者。
+    if (paperSegments.includes(idx)) {
+      console.warn(`[paper] 事件 ${eventId} 把第 0 页配成了纸条页，纸条页不能是第一页，这一页按普通正文显示`);
+    }
+
     const html = opts.reveal ? revealSys.clauses(segments[idx], parse) : parse(segments[idx]);
     const body = renderPage(html);
     bindKeywordClicks(body);
-    document.getElementById('btn-event-continue').addEventListener('click', () => {
-      if (idx < segments.length - 1) {
-        idx += 1;
-        showPage();
-      } else {
-        onFinish();
-      }
-    });
+    document.getElementById('btn-event-continue').addEventListener('click', advance);
     maybePlayDialogue(eventId, idx, segments.length);
   };
+
   showPage();
 }
 
@@ -830,6 +986,11 @@ function advanceDay() {
  *        配的 quake 演出。读档进来时用（见 boot），免得每次刷新页面都重震一遍。
  */
 function showEnding(id, opts = {}) {
+  // 进结局就把低理智扫描循环停死。两条设置 state.ending 的路径都不走 refreshAll()，
+  // 所以不能指望 syncScanLoop() 来收尾；runScan() 里的 state.ending 闸只能保证下一拍
+  // 不演，定时器会一直挂到那一拍为止。
+  stopScanLoop();
+
   const ending = endingSys.getText(id, state, content.endings);
   // "陷入疯狂"是当天中途的意外死亡，不是整个旅程走完后的真结局——比起强制从第 1 天
   // 重开，更合理的是直接问要不要重新度过今天（复用"重新度过今日"的存档点机制，见
@@ -877,6 +1038,9 @@ function showEnding(id, opts = {}) {
     }
     document.getElementById('btn-restart').addEventListener('click', () => {
       quakeSys.cancel(); // 保险：演出还没收尾就重开时，把抖动/落灰一并复位
+      paperSys.cancel(); // 同上：纸条摊到一半重开，把那一层也收掉
+      stopScanLoop();    // 同上：扫描框还亮着就重开，地图会被 map.init 重建，那一层得先摘干净；
+                         // 连排在后面的定时器一起停掉，不然重开后还会冒一次
       clearSave();
       state = createInitialState(content.days['1']);
       snapshotDay(state); // 补一份第 1 天存档点，不然重开这一局之后"重新度过今日"会找不到存档

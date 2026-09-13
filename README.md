@@ -33,6 +33,7 @@ engine/                 引擎代码，通用规则，不写死任何故事内�
   signal.js              信号闪现：被动随机弹留言，池子来自当天 content
   quake.js               地震演出：抖动 + 落灰 + 一拍死寂，按震级预设参数，零美术素材（用在 timedEvents 和结局上）
   reveal.js              逐字/逐句浮现：把文本包成带序号的 span，动画交给 ui.css 的 .rv-*（只用在结局和地震这类要有分量的地方）
+  paper.js               折叠纸条演出：一张对折的纸条在屏幕中央翻开、摊平之后字迹才逐句淡入，点一下收起（事件正文里配了 paperSegments 的那一页走这条路）
   basecamp.js            加油站专属准入规则（翻旧报纸每日一次）
   sanity.js               理智值：数值、三档阈值、UI 反馈 class
   dice.js                 1d20 掷骰：按理智档位决定取骰次数/取值规则
@@ -80,6 +81,13 @@ _legacy-reference/        重构前参照的旧原型（另一个故事，仅供
 
 演出本身零美术素材：抖动是 CSS 关键帧（`#app` 和弹窗两层振幅不同、相位错开、一路衰减到停），落灰是几层互质间距的 radial-gradient 点阵以不同速度下落叠出来的视差，全程只动 transform/opacity，不碰 filter（原因见 `ui.css` 理智闪烁那一节的注释）。系统开了"减少动态效果"时自动只保留落灰和那一拍死寂，不抖。
 
+## 调折叠纸条演出：预览工具
+
+`tools/paper-preview.html`（同样要起本地静态服务器，访问 `/tools/paper-preview.html`）：不用玩到第 2 天早上，点一下按钮就能看纸条翻开——能改落下、翻开、字迹逐句淡入这三段的时长，也能直接改纸上的文字（支持 `[[显示文字|key]]`）。"事件窗口 + 纸条"那颗按钮连带演出前后的层次一起看：游戏里纸条就是摊在事件窗口之上的。改 `engine/paper.js` 或 `ui.css` 里「折叠纸条演出」那一节时用它对着调。
+
+同样零美术素材：整张纸是两块 CSS 渐变拼的（各取同一块渐变的一半，拼起来才是连续的一张纸），下半块绕中间那道折痕做 `rotateX` 180°→0° 的翻转，翻到侧面的明暗是盖一层黑色渐变跟着淡出、不用 filter；纸上的字是系统自带的楷体。对折的纸包只占整张纸的上半截，所以翻开的同时整张纸会往上抬四分之一做补偿——纸包不跑位，摊平之后正好居中。系统开了"减少动态效果"时纸直接是平的，只留淡入。
+
+
 ## 内容结构速览（改故事只用改这几份 JSON）
 
 - **`assets/maps/hotspots.json`**：`x`/`y` 是百分比坐标（0-100），`type` 只能是 `"basecamp"`（唯一，加油站）或 `"investigation"`。想换地图就把 `mapImage`（卫星底图）和 `detailImage`（手绘旧地图）指到你自己的图，热点用 `tools/coord-picker.html`（见上一节）重新量一遍。
@@ -88,6 +96,7 @@ _legacy-reference/        重构前参照的旧原型（另一个故事，仅供
   - `startMin`/`endMin`：当天的时间窗口（分钟数，0:00=0），决定 `clock-display` 起始值和"超时未归"的判定点；不写则各自兜底 480(08:00)/1200(20:00)，见 `engine/time.js`
   - `unlockedLocations`：当天地图上哪些 investigation 热点是解锁的（加油站永远解锁，不用列）
   - `events`：普通文本事件（`type:"text"`）或掷骰事件（`type:"diceCheck"`，需要 `diceThreshold` + `outcomes.{critFail,fail,success,critSuccess}`），`loc` 对应热点 id，`mainline` 标记是否主线，`clue`/`sanityCost`/`unlocksArchive` 都是可选字段
+    - `paperSegments`：可选，形如 `[2]`——`text` 按换行分页之后，这里列出的那几页不进事件窗口，改成一张折叠纸条在屏幕中央摊开，摊平之后字迹才逐句淡入，玩家点一下收起（`engine/paper.js`）。文字仍写在同一段 `text` 里，所以调查回顾照样收录全文、关键词照样能点开词条。**纸条页不能是第 0 页**：窗口里得先有一页把纸条摆进场景（"桌上压着一张纸条"），纸条才有地方摊、那颗"继续"才有着落；真配成第 0 页会退化成普通正文并在控制台报一句。绑在这一页上的 `dialogues`（`afterSegment` 填纸条那一页）会在玩家收起纸条之后才播——先读纸，再听两个人聊
   - `timedEvents`：**定时全局事件**，到点就发生、跟玩家当时在哪无关（对应 design-doc.md 1.6 节的两次地震）。字段 `at` 是当天第几分钟（10:33 = 633），其余字段跟普通 `text` 事件一样（`text` 支持换行分页、`clue`/`sanityCost`/`unlocksArchive` 照常），另可配 `quake: { "magnitude": "6.4" | "7.1" }` 在弹文案之前先播一次地震演出（`engine/quake.js`）。判定是"这次交互推进的这一小时有没有跨过 `at`"，引擎每次交互固定推进 60 分钟，所以文案要容得下误差（写"大约十点半"而不是"10:33 整"）；也因为时间只在"去调查地点"时推进，`at` 配得晚就要求当天有足够多的点位，否则走不到那个时刻。`dialogues` 一样能绑在它上面（`afterEvent` 填 timedEvent 的 id）
   - `newspaper`：加油站"翻旧报纸"能看到的内容，每天一次
   - `signalPool`：信号闪现的候选池，被动小概率触发
