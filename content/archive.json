@@ -1,5 +1,14 @@
 {
-  "_comment": "示例档案库数据，非正式剧本。字段结构对应 design-doc.md 第 4.3 节：category 用于档案库分类 tab，unlockedBy 记录解锁来源（keyword_click / event:<id>），linkedMainCase 标记是否计入探索进度（见 5.3 节 progress 计算）。body 内可以继续嵌套 [[显示文字|key]] 语法，形成互相跳转的关系网。地名已按 content/worldbuilding.md 里确认的 canon 改为「白湖镇/干湖」体系，原 fogLake 键改名 dryLake。",
+  "_comment": "示例档案库数据，非正式剧本。字段结构对应 design-doc.md 第 4.3 节：category 用于档案库分类 tab，unlockedBy 记录解锁来源（keyword_click / event:<id>），linkedMainCase 标记是否计入探索进度（见 5.3 节 progress 计算）。可选字段 unlocksLocation 是一个热点 id 数组：玩家点开这个词条的同时，把这些调查地点一并开进地图（引擎侧在 engine/main.js 的 unlockLocationsFromArchive，只从关键词点击这一条路径触发）——用来做「先在报纸/告示里读到有这么个地方，才去得了」，第 1 天的 square 就是这么开的。body 内可以继续嵌套 [[显示文字|key]] 语法，形成互相跳转的关系网。地名已按 content/worldbuilding.md 里确认的 canon 改为「白湖镇/干湖」体系，原 fogLake 键改名 dryLake。",
+
+  "square": {
+    "title": "中心广场",
+    "category": "地点",
+    "body": "白湖镇的中心，庆祝建镇八十周年的纪念碑就立在那里。旧报纸上说，镇上所有告示、寻人启事和活动通知都贴在广场的布告栏上——想知道这个镇子最近发生过什么，先去那儿看一眼。",
+    "unlockedBy": ["keyword_click"],
+    "linkedMainCase": false,
+    "unlocksLocation": ["square"]
+  },
 
   "dryLake": {
     "title": "干湖",

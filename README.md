@@ -94,17 +94,17 @@ _legacy-reference/        重构前参照的旧原型（另一个故事，仅供
   - **墨迹揭图**：`mapImage` 是一开局就看得见的底图，`detailImage` 只在已解锁地点周围像墨水洇开一样显示出来（`engine/map.js` 的「墨迹揭图」一节）。两张图必须同尺寸同取景，同一套 `x`/`y` 才对得上。可选字段 `inkRadius` 单独指定某个点洇开范围的半径（占图宽的百分比，不写默认 8.5），占地大的地点（白湖、废弃工厂）调大一点更自然。揭开过的区域不会随换天收回去。**所有热点都揭开过之后**，墨会从镇中心漫过整张纸，直接显示完整的 `detailImage`（连图廓、罗盘、比例尺一起），不再是一块块的。
 - **`content/days.json`**：按天数字符串做 key（`"1"`、`"2"`、`"3"`），`meta.totalDays` 决定跑几天后进入结局判定（当前固定 3 天）。每天包含：
   - `startMin`/`endMin`：当天的时间窗口（分钟数，0:00=0），决定 `clock-display` 起始值和"超时未归"的判定点；不写则各自兜底 480(08:00)/1200(20:00)，见 `engine/time.js`
-  - `unlockedLocations`：当天地图上哪些 investigation 热点是解锁的（加油站永远解锁，不用列）
+  - `unlockedLocations`：当天地图上哪些 investigation 热点是解锁的（加油站永远解锁，不用列）。可以是空数组——第 1 天就是空的，中心广场要玩家在加油站「翻旧报纸」里点开 `[[中心广场|square]]` 这个词条才会出现（词条侧的 `unlocksLocation`，见下）；`state.extraUnlockedLocations` 里动态解锁的地点全程累计，会叠加在当天这份名单之上
   - `events`：普通文本事件（`type:"text"`）或掷骰事件（`type:"diceCheck"`，需要 `diceThreshold` + `outcomes.{critFail,fail,success,critSuccess}`），`loc` 对应热点 id，`mainline` 标记是否主线，`clue`/`sanityCost`/`unlocksArchive` 都是可选字段
     - `paperSegments`：可选，形如 `[2]`——`text` 按换行分页之后，这里列出的那几页不进事件窗口，改成一张折叠纸条在屏幕中央摊开，摊平之后字迹才逐句淡入，玩家点一下收起（`engine/paper.js`）。文字仍写在同一段 `text` 里，所以调查回顾照样收录全文、关键词照样能点开词条。**纸条页不能是第 0 页**：窗口里得先有一页把纸条摆进场景（"桌上压着一张纸条"），纸条才有地方摊、那颗"继续"才有着落；真配成第 0 页会退化成普通正文并在控制台报一句。绑在这一页上的 `dialogues`（`afterSegment` 填纸条那一页）会在玩家收起纸条之后才播——先读纸，再听两个人聊
   - `timedEvents`：**定时全局事件**，到点就发生、跟玩家当时在哪无关（对应 design-doc.md 1.6 节的两次地震）。字段 `at` 是当天第几分钟（10:33 = 633），其余字段跟普通 `text` 事件一样（`text` 支持换行分页、`clue`/`sanityCost`/`unlocksArchive` 照常），另可配 `quake: { "magnitude": "6.4" | "7.1" }` 在弹文案之前先播一次地震演出（`engine/quake.js`）。判定是"这次交互推进的这一小时有没有跨过 `at`"，引擎每次交互固定推进 60 分钟，所以文案要容得下误差（写"大约十点半"而不是"10:33 整"）；也因为时间只在"去调查地点"时推进，`at` 配得晚就要求当天有足够多的点位，否则走不到那个时刻。`dialogues` 一样能绑在它上面（`afterEvent` 填 timedEvent 的 id）
-  - `newspaper`：加油站"翻旧报纸"能看到的内容，每天一次
+  - `newspaper`：加油站"翻旧报纸"能看到的内容，每天只出一批新的；已经翻出来的那批，玩家再打开这个 tab 会原样再显示一遍（正文里的关键词链接是解锁词条/地点的入口，看一眼就收走会把当天卡死）
   - `signalPool`：信号闪现的候选池，被动小概率触发
   - `reviews`：复盘，`req` 是需要先采集到的 `clue` id 数组，`options[].tag` 会写进 `choiceLog`，供结局文案变体匹配
   - `vlogTitle`：这期 vlog 的标题，发布后的手机数据页显示在频道名下面；不写兜底"第 N 天的素材"
   - `vlogComments`：手机数据页评论区里的评论，`{ user, text, likes?, alien? }`，`alien:true` 显示成灰色斜体的"未知来源"评论（呼应"置顶那条不是我们发的"）；当天真的弹出过的信号闪现会自动接在后面，不用重复写
   - 频道名写在 `meta.channel`（`{ name, handle }`），不写兜底 `QQ & BB`
-- **`content/archive.json`**：`category` 随便定义（地点/人物/事件/物品……），`linkedMainCase:true` 的词条才计入探索进度（5.3 节 progress），`unlockedBy` 目前只是给你自己看的注释，引擎侧任何途径调用 `archive.unlock()` 都算数，不校验来源。
+- **`content/archive.json`**：`category` 随便定义（地点/人物/事件/物品……），`linkedMainCase:true` 的词条才计入探索进度（5.3 节 progress），`unlockedBy` 目前只是给你自己看的注释，引擎侧任何途径调用 `archive.unlock()` 都算数，不校验来源。可选的 `unlocksLocation`（热点 id 数组）让"收集到这个词条"顺带把对应的调查地点开进地图——"先在报纸/告示上读到有这么个地方，才去得了"，只在玩家点击 `[[..|key]]` 链接时触发（`engine/main.js` 的 `unlockLocationsFromArchive`），第 1 天的 `square` 就是这么开的。
 - **`content/endings.json`**：当前代码里还是旧模型的 4 个结局 key（`truth_escape`/`costly_escape`/`blind_escape`/`trapped`，对应旧的"探索进度×San值 2x2 矩阵"）；`variants[].when` 对应 `choiceLog` 里的 `tag`，命中就把 `text` 追加在结局正文后面。可选的 `epilogue`（后日谈）是**单独一页**，玩家在结局正文里点过"继续"之后才揭晓——design-doc.md 1.4 节要求结局②的翻转必须放在这里、正文那一段不许留破绽，所以两段在数据上就是分开的；`epilogue` 自身也能用换行继续分页。可选的 `quake` 会在结局窗口弹出之前先播一次地震演出。结局窗口的演出是标题逐字上浮 + 正文逐句淡入（`engine/reveal.js`）。**待更新**：设计已确认改成 3 个结局的新模型（San 值熔断/进度不够 → 结局①，进度达标后由高潮关键抉择二选一给出结局②/③），见 design-doc.md 5.3 节；`engine/ending.js` 和这份 JSON 都还没跟着改，等正式故事大纲到位后一起重构。
 
 ## 跑过的验证

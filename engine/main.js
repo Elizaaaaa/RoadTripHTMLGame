@@ -217,7 +217,10 @@ function bindKeywordClicks(container) {
 
 function onKeywordClick(key, spanEl) {
   const isNew = archiveSys.unlock(state, key, 'keyword_click');
-  if (isNew) notifyArchiveUnlock(key);
+  if (isNew) {
+    notifyArchiveUnlock(key);
+    unlockLocationsFromArchive(key);
+  }
   // 立刻把点过的这个 span 从蓝（未收集）切成灰（已收集），不用等窗口关了重开才看到变化
   if (spanEl) {
     spanEl.classList.remove('kw-locked');
@@ -238,6 +241,30 @@ function notifyArchiveUnlock(key) {
 function notifyLocationUnlock(id) {
   const hotspot = mapSys.getHotspot(id);
   showToast(`🗺️ 地图已更新：${hotspot ? hotspot.name : id}`);
+}
+
+// 收集词条顺带解锁地点时，"地图已更新"那条晚一拍再弹：所有 toast 共用同一个元素，
+// 同一帧连着弹两条的话前一条会被直接顶掉，玩家只看得见后面那条。
+const LOC_TOAST_DELAY_MS = 1800;
+
+/**
+ * 词条里写了 unlocksLocation（见 content/archive.json 的 square）时，玩家点开这个词条
+ * 的同时把对应的调查地点开进地图——"先在报纸/告示上读到有这么个地方，才去得了"。
+ * 只从 onKeywordClick 调用：地点解锁和词条解锁一样，都以玩家真的点过那个链接为准，
+ * 不走事件效果自动发放（那条路是事件自己的 unlocksLocation，见 applyOutcomeEffects）。
+ */
+function unlockLocationsFromArchive(key) {
+  const entry = archiveSys.getEntry(key);
+  if (!entry || !entry.unlocksLocation) return;
+  state.extraUnlockedLocations ||= [];
+  let queued = 0;
+  for (const id of entry.unlocksLocation) {
+    if (state.extraUnlockedLocations.includes(id)) continue;
+    state.extraUnlockedLocations.push(id);
+    setTimeout(() => notifyLocationUnlock(id), LOC_TOAST_DELAY_MS * (queued + 1));
+    queued++;
+  }
+  if (queued) refreshAll(); // 热点状态和墨迹揭图就地更新，不用等玩家把加油站窗口关掉
 }
 
 function notifyClueGained(clueId) {
@@ -901,13 +928,16 @@ function renderBasecampTab(tab) {
 }
 
 function renderNewspaperTab(body, dayContent) {
-  if (!basecampSys.canReadNewspaper(state)) {
-    body.innerHTML = `<p class="hint">今天已经翻过旧报纸/论坛老帖了，明天再来看看。</p>`;
-    return;
-  }
-  const entries = basecampSys.readNewspaper(state, dayContent) || [];
+  // "每天限一次"限的是"翻出新东西"，已经翻出来的这批可以反复看：报纸正文里的
+  // [[关键词]] 是解锁词条（乃至地点——第 1 天的中心广场就是这么开的）的唯一入口，
+  // 只让看一眼的话，玩家一次没点中就再也回不去了，当天直接卡死。
+  const firstTimeToday = basecampSys.canReadNewspaper(state);
+  const entries = basecampSys.readNewspaper(state, dayContent) || dayContent.newspaper || [];
+  const paragraphs = entries
+    .map(e => `<p class="archive-entry">${kw.parseKeywords(e.text, k => archiveSys.isUnlocked(state, k))}</p>`)
+    .join('');
   body.innerHTML = entries.length
-    ? entries.map(e => `<p class="archive-entry">${kw.parseKeywords(e.text, k => archiveSys.isUnlocked(state, k))}</p>`).join('')
+    ? `${firstTimeToday ? '' : '<p class="hint">今天已经翻过一遍了，这是刚才翻到的东西：</p>'}${paragraphs}`
     : '<p class="hint">今天没有新的旧报纸/论坛老帖。</p>';
   bindKeywordClicks(body);
   saveState(state);
