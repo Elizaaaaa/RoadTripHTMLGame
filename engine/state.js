@@ -1,9 +1,11 @@
 // state.js —— 全局游戏状态：结构定义 + 存档/读档
 // 本文件只管"数据"，不含任何 UI 或规则判断逻辑（规则判断在各自的 engine 模块里）。
 
+import { createFinale } from './ending.js';
+
 // 版本号在每次改动后递增：旧存档会挂在旧 key 下面，读不到就自动当新档处理，
 // 不需要玩家手动清 localStorage 就能获得一次"从头开始"的测试。
-const SAVE_KEY = 'roadtrip1_save_v34';
+const SAVE_KEY = 'roadtrip1_save_v35';
 
 /**
  * 新开一局的初始状态。
@@ -37,10 +39,14 @@ export function createInitialState(day1Content) {
     usedNewspaperToday: false, // 翻旧报纸每天限一次
 
     completedReviews: [],    // 已完成的复盘事件 id
-    choiceLog: [],           // 关键复盘选择记录：{ reviewId, day, tag }
+    choiceLog: [],           // 关键选择记录：剪辑复盘写 { reviewId, day, tag }，
+                             // 抉择事件（type:'choice'）写 { choiceId, day, tag }；
+                             // 两者都只用 tag，供结局文案变体匹配（见 ending.js getText）
     diceLog: [],             // 掷骰记录：{ eventId, day, rolls, chosen, outcome }
     publishLog: [],          // 每天的发布结算：{ day, playcount, clues } 或 { day, failed:true }
 
+    finale: createFinale(),  // 高潮抉择的落子：{ meridian, baby, ending }，见 ending.js
+                             // 的五结局真值表。ending 一旦写上，游戏当场结束
     ending: null,            // 游戏结束后写入结局 id，写入后视为游戏已结束
 
     dayCheckpoints: {}      // { 天数: 当天开始时的状态快照 }，供"重新度过今日"/"回到上一天"使用，见下方三个函数

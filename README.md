@@ -42,7 +42,7 @@ engine/                 引擎代码，通用规则，不写死任何故事内�
   review.js               复盘：前置条件判定、选项提交、choiceLog 记录
   publish.js              发布 vlog：播放量结算（超时未归判"被黑暗吞噬"坏结局，见 main.js handleDayOver()，不走这个模块）
   vlogstats.js            发布之后弹出的"手机数据页"：把播放量派生成点赞/评论/关注/完播率等互动数据并渲染
-  ending.js               结局判定：进度 × 理智值 2x2 矩阵 + 文案变体 + 后日谈(epilogue)分段
+  ending.js               结局判定：五结局模型（午夜未归 / 关键线索没收齐 / 高潮抉择两问的真值表）+ 文案变体 + 后日谈(epilogue)分段
   main.js                 启动与流程编排，把上面这些模块接起来
   ui.css                  引擎侧通用界面样式（含理智值氛围反馈动效）
   phone.css               "手机数据页"专用样式（竖屏手机外壳 + 暖色玻璃拟态，跟 ui.css 的 macOS 灰调分开）
@@ -50,7 +50,7 @@ content/                 示例数据，非正式剧本，改这里不用碰 eng
   worldbuilding.md         已确认的世界观命名 canon（镇名/地名/公司名），写正式文案前先看这个
   days.json               3 天示例：地点开放表、事件、掷骰事件、定时全局事件(两次地震)、信号池、复盘、旧报纸、每天时间窗口
   archive.json             示例档案库词条（含嵌套 [[]] 互跳、unlockedBy、linkedMainCase）
-  endings.json             4 个结局的占位文案 + 后日谈 + choiceLog 文案变体示例
+  endings.json             5 个结局的文案 + 后日谈 + choiceLog/状态伪 tag 的文案变体
 assets/maps/
   white-lake-map-now.png   底图：白湖镇「现在」的卫星照片（1536x1024），一开局看到的就是它
   white-lake-map.png      手绘旧地图（同尺寸同取景），地点解锁后在该点周围墨迹洇开露出来
@@ -95,27 +95,33 @@ _legacy-reference/        重构前参照的旧原型（另一个故事，仅供
 - **`content/days.json`**：按天数字符串做 key（`"1"`、`"2"`、`"3"`），`meta.totalDays` 决定跑几天后进入结局判定（当前固定 3 天）。每天包含：
   - `startMin`/`endMin`：当天的时间窗口（分钟数，0:00=0），决定 `clock-display` 起始值和"超时未归"的判定点；不写则各自兜底 480(08:00)/1200(20:00)，见 `engine/time.js`
   - `unlockedLocations`：当天地图上哪些 investigation 热点是解锁的（加油站永远解锁，不用列）。可以是空数组——第 1 天就是空的，中心广场要玩家在加油站「翻旧报纸」里点开 `[[中心广场|square]]` 这个词条才会出现（词条侧的 `unlocksLocation`，见下）；`state.extraUnlockedLocations` 里动态解锁的地点全程累计，会叠加在当天这份名单之上
-  - `events`：普通文本事件（`type:"text"`）或掷骰事件（`type:"diceCheck"`，需要 `diceThreshold` + `outcomes.{critFail,fail,success,critSuccess}`），`loc` 对应热点 id，`mainline` 标记是否主线，`clue`/`sanityCost`/`unlocksArchive` 都是可选字段
+  - `events`：普通文本事件（`type:"text"`）或掷骰事件（`type:"diceCheck"`，需要 `diceThreshold` + `outcomes.{critFail,fail,success,critSuccess}`），`loc` 对应热点 id，`mainline` 标记是否主线，`clue`/`sanityCost`/`unlocksArchive` 都是可选字段。第三种类型是**抉择事件**（`type:"choice"`，见下）
+    - `requires`：可选的准入门槛，不满足的事件在"这个地点有没有可调查的事件"那一步就被跳过（玩家点上去等于没事件，不耗时间）。支持 `allMainClues`（`true`=关键线索必须已收齐，`false`=只在还没收齐时出现）、`clues`（这些线索都要已采集）、`archives`（这些词条都要已解锁）。引擎取该地点**数组里第一条满足门槛的**事件，所以同一个地点可以并排摆"够格才给的那一版"和"不够格时的兜底版"——第 3 天 `alkaliWorks` 的 `e_finale` + `e_finale_locked` 就是这么配的
+    - `type:"choice"` **抉择事件**：正文照常按换行分页播，最后一页的"继续"换成一组选项按钮（`options[]`）。选项字段：`label`（按钮文字）、`hint`（按钮里第二行小字，可不写）、`text`（选完之后播的过场正文，可不写）、`tag`（写进 `choiceLog`，供结局文案变体匹配）、`finale`（`{ meridian: "destroy"|"repair", baby: true|false }`，交给 `engine/ending.js` 的五结局真值表；凑齐就**当场进结局窗口**）、`ending`（直接指定结局 id 的后门）、`next`（接着播同一天 `events` 里那个 id 的事件，用来串第二问——被串的那条**不要写 `loc`**，否则它自己也会挂到地点上），以及普通事件的效果字段。抉择窗口**关不掉**，而且要等玩家真的选了才记进 `triggeredEvents`：中途刷新页面不会把高潮弄丢，重新点一次那个地点就能接着选
     - `paperSegments`：可选，形如 `[2]`——`text` 按换行分页之后，这里列出的那几页不进事件窗口，改成一张折叠纸条在屏幕中央摊开，摊平之后字迹才逐句淡入，玩家点一下收起（`engine/paper.js`）。文字仍写在同一段 `text` 里，所以调查回顾照样收录全文、关键词照样能点开词条。**纸条页不能是第 0 页**：窗口里得先有一页把纸条摆进场景（"桌上压着一张纸条"），纸条才有地方摊、那颗"继续"才有着落；真配成第 0 页会退化成普通正文并在控制台报一句。绑在这一页上的 `dialogues`（`afterSegment` 填纸条那一页）会在玩家收起纸条之后才播——先读纸，再听两个人聊
   - `timedEvents`：**定时全局事件**，到点就发生、跟玩家当时在哪无关（对应 design-doc.md 1.6 节的两次地震）。字段 `at` 是当天第几分钟（10:33 = 633），其余字段跟普通 `text` 事件一样（`text` 支持换行分页、`clue`/`sanityCost`/`unlocksArchive` 照常），另可配 `quake: { "magnitude": "6.4" | "7.1" }` 在弹文案之前先播一次地震演出（`engine/quake.js`）。判定是"这次交互推进的这一小时有没有跨过 `at`"，引擎每次交互固定推进 60 分钟，所以文案要容得下误差（写"大约十点半"而不是"10:33 整"）；也因为时间只在"去调查地点"时推进，`at` 配得晚就要求当天有足够多的点位，否则走不到那个时刻。`dialogues` 一样能绑在它上面（`afterEvent` 填 timedEvent 的 id）
   - `newspaper`：加油站"翻旧报纸"能看到的内容，每天只出一批新的；已经翻出来的那批，玩家再打开这个 tab 会原样再显示一遍（正文里的关键词链接是解锁词条/地点的入口，看一眼就收走会把当天卡死）
   - `signalPool`：信号闪现的候选池，被动小概率触发
-  - `reviews`：复盘，`req` 是需要先采集到的 `clue` id 数组，`options[].tag` 会写进 `choiceLog`，供结局文案变体匹配
+  - `reviews`：复盘，`req` 是需要先采集到的 `clue` id 数组，`successTag`/`failTag` 会写进 `choiceLog`，供结局文案变体匹配
   - `vlogTitle`：这期 vlog 的标题，发布后的手机数据页显示在频道名下面；不写兜底"第 N 天的素材"
   - `vlogComments`：手机数据页评论区里的评论，`{ user, text, likes?, alien? }`，`alien:true` 显示成灰色斜体的"未知来源"评论（呼应"置顶那条不是我们发的"）；当天真的弹出过的信号闪现会自动接在后面，不用重复写
   - 频道名写在 `meta.channel`（`{ name, handle }`），不写兜底 `QQ & BB`
-- **`content/archive.json`**：`category` 随便定义（地点/人物/事件/物品……），`linkedMainCase:true` 的词条才计入探索进度（5.3 节 progress），`unlockedBy` 目前只是给你自己看的注释，引擎侧任何途径调用 `archive.unlock()` 都算数，不校验来源。可选的 `unlocksLocation`（热点 id 数组）让"收集到这个词条"顺带把对应的调查地点开进地图——"先在报纸/告示上读到有这么个地方，才去得了"，只在玩家点击 `[[..|key]]` 链接时触发（`engine/main.js` 的 `unlockLocationsFromArchive`），第 1 天的 `square` 就是这么开的。
-- **`content/endings.json`**：当前代码里还是旧模型的 4 个结局 key（`truth_escape`/`costly_escape`/`blind_escape`/`trapped`，对应旧的"探索进度×San值 2x2 矩阵"）；`variants[].when` 对应 `choiceLog` 里的 `tag`，命中就把 `text` 追加在结局正文后面。可选的 `epilogue`（后日谈）是**单独一页**，玩家在结局正文里点过"继续"之后才揭晓——design-doc.md 1.4 节要求结局②的翻转必须放在这里、正文那一段不许留破绽，所以两段在数据上就是分开的；`epilogue` 自身也能用换行继续分页。可选的 `quake` 会在结局窗口弹出之前先播一次地震演出。结局窗口的演出是标题逐字上浮 + 正文逐句淡入（`engine/reveal.js`）。**待更新**：设计已确认改成 3 个结局的新模型（San 值熔断/进度不够 → 结局①，进度达标后由高潮关键抉择二选一给出结局②/③），见 design-doc.md 5.3 节；`engine/ending.js` 和这份 JSON 都还没跟着改，等正式故事大纲到位后一起重构。
+- **`content/archive.json`**：`category` 随便定义（地点/人物/事件/物品……），`linkedMainCase:true` 的词条才计入探索进度（5.3 节 progress），而探索进度要**全部收齐**才开得出高潮抉择——所以每个 `linkedMainCase` 词条都必须在玩家一定走得到的正文里配一个 `[[显示文字|key]]` 链接，掷骰事件的**四档结果都要给**，只在成功档给的话掷输一次就等于永久锁死后三个结局，`unlockedBy` 目前只是给你自己看的注释，引擎侧任何途径调用 `archive.unlock()` 都算数，不校验来源。可选的 `unlocksLocation`（热点 id 数组）让"收集到这个词条"顺带把对应的调查地点开进地图——"先在报纸/告示上读到有这么个地方，才去得了"，只在玩家点击 `[[..|key]]` 链接时触发（`engine/main.js` 的 `unlockLocationsFromArchive`），第 1 天的 `square` 就是这么开的。
+- **`content/endings.json`**：五个结局，key 就是 `engine/ending.js` 里的那五个 id——`night_madness`（被黑夜吞噬：任意一天午夜前没剪辑发布并回旅馆，`main.js handleDayOver()` 即时判定）、`oblivious`（一无所知：三天走完关键线索没收齐，或收齐了却没去按那个抉择）、`god_arrival`（神的降临：抉择里选了摧毁子午线仪）、`past_stays_buried`（旧日应当留在过去：选了修复、拒绝救婴儿）、`salvation_in_ruin`（于毁灭中拯救：选了修复并救婴儿）。判定细则见 design-doc.md 5.3 节。
+  `variants[].when` 匹配 `choiceLog` 里的 `tag`（剪辑复盘的 `successTag`/`failTag`、抉择选项的 `tag`），也匹配引擎按当前状态算出来的**伪 tag**（统一 `__` 前缀）：`__cluesComplete` / `__cluesIncomplete` / `__finaleSkipped`（线索收齐却没按下抉择）/ `__sanityBreaking` / `__sanityClear` / `__day1`~`__day3`；命中就把 `text` 追加在结局正文后面。
+  可选的 `epilogue`（后日谈）是**单独一页**，玩家在结局正文里点过"继续"之后才揭晓——design-doc.md 1.4 节要求结局⑤的翻转必须放在这里、正文那一段不许留破绽，所以两段在数据上就是分开的；`epilogue` 自身也能用换行继续分页。可选的 `quake` 会在结局窗口弹出之前先播一次地震演出（现在 `god_arrival` 和 `past_stays_buried` 配了）。结局窗口的演出是标题逐字上浮 + 正文逐句淡入（`engine/reveal.js`）。
 
 ## 跑过的验证
 
 - 手动过了一遍 DOM id 对照（`index.html` 静态 id vs `main.js` 动态生成 id），没有对不上的。
-- 用 Node 直接跑了一遍 `engine/` 的纯逻辑模块（跳过 `map.js`/`main.js` 里依赖浏览器 DOM 的部分），拿真实的 `content/*.json` 数据模拟了两天完整流程：文本事件、掷骰事件三档取骰规则、信号闪现命中率、关键词解锁（含嵌套跳转）、复盘前置条件、加油站翻报纸/发布、超时惩罚、结局矩阵四个象限——68 项断言全部通过。
+- 用 Node 直接跑了一遍 `engine/` 的纯逻辑模块（跳过 `map.js`/`main.js` 里依赖浏览器 DOM 的部分），拿真实的 `content/*.json` 数据模拟了两天完整流程：文本事件、掷骰事件三档取骰规则、信号闪现命中率、关键词解锁（含嵌套跳转）、复盘前置条件、加油站翻报纸/发布、超时惩罚、结局判定——68 项断言全部通过（结局那部分写在旧的 2x2 矩阵时代，后来已被下面那轮五结局校验取代）。
 - 用本地静态服务器起了一遍，确认 `index.html`/`engine/*.js`/`content/*.json`/`assets/maps/*` 全部能被正常请求到（200）。
 - **3 天时间窗口改版**（第 1 天 20:00-24:00、第 2/3 天 08:00-24:00）：所有 `content/*.json` 过了一遍 `JSON.parse` 校验；单独跑了 `time.js`/`state.js` 的边界断言——第 1 天初始时钟 20:00、走 2 次(180 分钟)未到 24:00、走第 3 次即判定超时，第 2/3 天重置到 08:00 且能连续走 10 次才到超时点——全部通过。新增的第 3 天示例内容（`theSink`/`cemetery` 两个地点、1 个掷骰事件、2 个文本事件、1 个复盘）尚未跑完整的浏览器端手动通关，改动故事文案或调整这部分时建议自己再点一遍。
 
 - **定时全局事件 + 地震演出 + 结局后日谈**（本轮新增）：用 Node 直接跑了 `engine/time.js`、`engine/reveal.js`、`engine/ending.js` 加真实 `content/*.json` 的 117 项断言——第 2 天按 60 分钟步长走完全天，M6.4 恰好在第 3 次交互（600→660）弹一次且只弹一次，第 3 天 M7.1 落在第 13 次交互（1200→1260）；左开右闭区间验过不会在相邻两次推进里重复命中；逐句切分不会把 `[[显示文字|key]]` 切开；每个结局都有后日谈且都写了 M6.4/M7.1 两条记录；所有 `unlocksArchive` 的 key 在正文里都有对应的 `[[..|key]]` 链接、所有线索 id 在 `materials.json` 里都有登记、所有对话绑定的事件都存在且 `afterSegment` 不越界。
 - **浏览器端实测**（Edge headless）：`quake.play({magnitude:'7.1'})` 的 promise 在 2800ms 兑现（1900 抖 + 900 死寂），演出期间 `body` 上是 `quaking quake-blocking`、落灰层 z-index 250 且接管点击、`#app`/`#modal-box` 各自挂上对应关键帧，结束后 class 全部摘干净、`#app` 的 animation 回到 `none`；截图对比确认地图确实位移、顶部确实压上了一层灰。结局窗口的 `.rv-char`/`.rv-clause` 计算样式也核过（逐字 0.05s、逐句 0.18s 递增）。
+- **五结局模型 + 高潮抉择**（本轮新增）：用 Node 跑 `engine/ending.js` + `engine/archive.js` 加真实 `content/*.json` 的 89 项断言——真值表四个分支（destroy / repair+救 / repair+不救 / repair 未答完）各给出正确的结局 id，关键线索差一条就开不出抉择，`endings.json` 的五个 key 跟引擎完全对齐且没有残留的旧 key，五个结局的后日谈都写了 M6.4/M7.1 两条记录，`variants` 的伪 tag（`__cluesIncomplete`/`__finaleSkipped`/`__sanityBreaking`）该命中的命中、不该命中的不命中；另外静态验过**八个 `linkedMainCase` 词条在"玩家一定走得到的正文"里都有 `[[..|key]]` 链接**（含掷骰事件的四档结果），否则后三个结局会被一次失败的掷骰永久锁死。
+- **浏览器端走完三条抉择分支**（Edge headless + CDP，35 项断言）：往 localStorage 里塞一份第 3 天的存档后点废弃工厂——线索没收齐时给的是兜底事件、不给抉择；收齐后抉择窗口关不掉（红灯渲染成不可点的暗点）、正文分 6 页、`[[子午线仪|meridian]]` 链接在；「摧毁」→ 地震演出 → 「神的降临」，「修复」→ 第二问串出来 → 拒绝给「旧日应当留在过去」、接受给「于毁灭中拯救」，三次都正确写进 `state.ending` 和 `state.finale`；结局⑤的正文翻完才出现后日谈、正文里没有提前泄底；抉择摆出来但还没选时刷新页面，回来再点工厂抉择还在（不会被记成"已触发"而丢掉）。全程控制台无 error。
 
 框架阶段没有覆盖到、故意先放着的点：
 - 复盘只做了"选一个选项"这一种形式，原型参考里的"判断对错/排序"题型没有照搬——design-doc.md 对复盘的要求本身就是"记录关键选择供结局文案分支"，没有要求特定题型，所以先按最简单的够用实现来，你要更复杂的题型可以在 `review.js` 上加。

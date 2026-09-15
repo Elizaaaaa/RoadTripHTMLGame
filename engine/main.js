@@ -192,14 +192,20 @@ function closeClipInfo() {
  * 把弹窗内容包进一层仿 macOS 窗口外壳（标题栏 + 红黄绿交通灯 + 内容区），
  * 营造"玩家正在自己电脑上查看结果"的观感。红色圆点绑定关闭，黄/绿仅装饰。
  * 所有 modalBox.innerHTML 的设置都应该走这里，而不是直接赋值。
+ * @param {object} [opts]
+ * @param {boolean} [opts.noClose] 红灯渲染成不可点的装饰点，这个窗口关不掉。只用在
+ *        "关掉就再也回不来"的窗口上——目前是高潮抉择（见 showChoiceEvent）：那个事件
+ *        一旦被跳过，玩家就只剩"一无所知"一条路，不该让一次误点造成这种后果。
  * @returns {HTMLElement} 内容区 .mac-body，后续查询/绑定事件仍可用 document.getElementById
  *          或这个返回值，两者等价（.mac-body 就在 modalBox 内部）。
  */
-function renderWindow(title, bodyHTML) {
+function renderWindow(title, bodyHTML, opts = {}) {
   modalBox.innerHTML = `
     <div class="mac-titlebar">
       <div class="mac-traffic">
-        <button class="mac-dot mac-dot-red" id="mac-close" title="关闭"></button>
+        ${opts.noClose
+          ? '<span class="mac-dot mac-dot-red mac-dot-off"></span>'
+          : '<button class="mac-dot mac-dot-red" id="mac-close" title="关闭"></button>'}
         <span class="mac-dot mac-dot-yellow"></span>
         <span class="mac-dot mac-dot-green"></span>
       </div>
@@ -207,7 +213,8 @@ function renderWindow(title, bodyHTML) {
     </div>
     <div class="mac-body">${bodyHTML}</div>
   `;
-  document.getElementById('mac-close').addEventListener('click', closeModal);
+  const closeBtn = document.getElementById('mac-close');
+  if (closeBtn) closeBtn.addEventListener('click', closeModal);
   return modalBox.querySelector('.mac-body');
 }
 
@@ -316,7 +323,7 @@ function visitInvestigationSpot(id) {
   if (!state.visitedToday.includes(id)) state.visitedToday.push(id);
 
   const event = (dayContent.events || []).find(
-    e => e.loc === id && !state.triggeredEvents.includes(e.id)
+    e => e.loc === id && !state.triggeredEvents.includes(e.id) && eventAvailable(e)
   );
 
   // 这个地点已经没有没触发过的事件了（之前都翻完了）：没什么好调查的，
@@ -346,16 +353,49 @@ function visitInvestigationSpot(id) {
       showSignalToast(flare.text);
     }
 
-    state.triggeredEvents.push(event.id);
-    if (event.type === 'diceCheck') {
-      showDiceEvent(event);
-    } else {
-      showTextEvent(event);
-    }
+    playEvent(event);
   };
 
   if (timed.length) playTimedEvents(timed, enterSpotEvent);
   else enterSpotEvent();
+}
+
+/**
+ * 按 type 把一个事件交给对应的播放器，顺带记进 triggeredEvents（事件全程只触发一次）。
+ *
+ * 抉择事件（type:'choice'）是唯一的例外——它要等玩家真的选了一个选项才算触发过（记在
+ * pickChoice 里）。理由是它关不掉也跳不过（renderWindow 的 noClose），但玩家仍然可能
+ * 在做选择的中途刷新页面；如果进窗口就记成"已触发"，刷新回来这个地点就再也没有事件了，
+ * 高潮抉择白白丢掉、只能走"一无所知"。现在的行为是：刷新回来再点一次那个地点，抉择
+ * 重新摆出来（代价只是再花掉一小时）。
+ */
+function playEvent(event) {
+  if (event.type !== 'choice' && !state.triggeredEvents.includes(event.id)) {
+    state.triggeredEvents.push(event.id);
+  }
+  if (event.type === 'choice') showChoiceEvent(event);
+  else if (event.type === 'diceCheck') showDiceEvent(event);
+  else showTextEvent(event);
+}
+
+/**
+ * 事件的准入门槛（days.json 里事件可选的 requires 字段）。不满足的事件在"这个地点
+ * 有没有可调查的事件"这一步就被跳过，玩家点上去等于没事件（不耗时间）——所以同一个
+ * 地点可以按顺序摆「够格才给的那一版」和「不够格时的那一版」两条事件，引擎会取数组里
+ * 第一条满足条件的：
+ *
+ *   requires.allMainClues: true  关键线索必须已经收齐（见 ending.js mainCluesComplete）
+ *                          false 反过来，只在还没收齐时出现（写兜底事件用）
+ *   requires.clues:    [id...]   这些线索必须都已经采集到（state.collectedClues）
+ *   requires.archives: [key...]  这些记事本词条必须都已经解锁
+ */
+function eventAvailable(event) {
+  const req = event.requires;
+  if (!req) return true;
+  if (typeof req.allMainClues === 'boolean' && endingSys.mainCluesComplete(state) !== req.allMainClues) return false;
+  if (req.clues && !req.clues.every(c => state.collectedClues.includes(c))) return false;
+  if (req.archives && !req.archives.every(k => archiveSys.isUnlocked(state, k))) return false;
+  return true;
 }
 
 // ---------- 发布之后的"手机数据页" ----------
@@ -702,6 +742,117 @@ function finishDice(event, result) {
   }, { paperSegments: result.outcome.paperSegments });
 }
 
+// ---------- 抉择事件（days.json 里 type: 'choice'）----------
+//
+// 用途只有一个，但它是全篇最重的一个：第 3 天在废弃工厂的高潮抉择，直接决定走哪个结局
+// （见 design-doc.md 5.3 节 / engine/ending.js 的五结局模型）。流程跟普通文本事件一样
+// 先把 text 按换行分页播完，最后一页的"继续"换成一组选项按钮；玩家点掉一个之后：
+//
+//   1. option 的效果字段（clue/clues/sanityCost/unlocksLocation）照常走 applyOutcomeEffects
+//   2. option.tag 写进 choiceLog，供结局 variants 匹配
+//   3. option.finale（{ meridian, baby } 或后门 ending）交给 ending.js applyFinaleChoice，
+//      真值表凑齐就当场锁定结局
+//   4. 播完 option.text，然后三选一收尾：锁定了结局 → 直接进结局窗口；配了 option.next →
+//      接着播同一天 events 里那个 id 的事件（大纲里"选了修复之后镇民才会来劝救婴儿"就是
+//      这么串的，被串的那条事件不写 loc，免得它自己也挂到某个地点上去）；都没有 → 照常收工
+//
+// 窗口关不掉（renderWindow 的 noClose）：这个事件被跳过等于玩家只剩"一无所知"一条路。
+
+function showChoiceEvent(event) {
+  applyOutcomeEffects(event);
+  recordEventLog(event, event.text);
+  openModal('event');
+  playEventPages(event.id, splitSegments(event.text), pageHTML => renderWindow(event.title || '抉择', `
+    <div class="event-text">${pageHTML}</div>
+    <button class="btn" id="btn-event-continue">继续</button>
+  `, { noClose: true }), () => renderChoiceOptions(event), {
+    reveal: event.reveal === true,
+    paperSegments: event.paperSegments
+  });
+}
+
+/** 正文播完之后那一屏：只剩选项，没有"继续"，也关不掉——必须选一个。 */
+function renderChoiceOptions(event) {
+  const options = event.options || [];
+  const parse = seg => kw.parseKeywords(seg, k => archiveSys.isUnlocked(state, k));
+  const body = renderWindow(event.title || '抉择', `
+    ${event.prompt ? `<div class="event-text">${parse(event.prompt)}</div>` : ''}
+    <div class="choice-list">
+      ${options.map((o, i) => `
+        <button class="btn btn-option choice-btn" data-idx="${i}">
+          <span class="choice-label">${o.label}</span>
+          ${o.hint ? `<span class="choice-hint">${parse(o.hint)}</span>` : ''}
+        </button>`).join('')}
+    </div>
+  `, { noClose: true });
+  bindKeywordClicks(body);
+  body.querySelectorAll('.choice-btn').forEach(btn => {
+    btn.addEventListener('click', () => pickChoice(event, options[Number(btn.dataset.idx)]));
+  });
+}
+
+function pickChoice(event, option) {
+  if (!option) return;
+  if (!state.triggeredEvents.includes(event.id)) state.triggeredEvents.push(event.id);
+  applyOutcomeEffects(option);
+
+  if (option.tag) {
+    // 同一个抉择只留最近一次的 tag（跟 review.js 里的处理一致），"重新度过今日"回退
+    // 之后重选不会在 choiceLog 里堆两条互相矛盾的记录
+    state.choiceLog = state.choiceLog.filter(c => c.choiceId !== event.id);
+    state.choiceLog.push({ choiceId: event.id, day: state.day, tag: option.tag });
+  }
+
+  const endingId = (option.finale || option.ending)
+    ? endingSys.applyFinaleChoice(state, { ...(option.finale || {}), ending: option.ending })
+    : null;
+
+  recordEventLog(event, option.text || option.label, `抉择：${option.label}`);
+  saveState(state);
+
+  const finish = () => {
+    if (endingId) {
+      state.ending = endingId;
+      saveState(state);
+      closeModal();
+      showEnding(endingId);
+      return;
+    }
+    if (option.next) {
+      playChainedEvent(option.next);
+      return;
+    }
+    closeModal();
+    afterInvestigation();
+  };
+
+  if (!option.text) {
+    finish();
+    return;
+  }
+  playEventPages(`${event.id}:${option.tag || 'opt'}`, splitSegments(option.text), pageHTML => renderWindow(event.title || '抉择', `
+    <div class="event-text">${pageHTML}</div>
+    <button class="btn" id="btn-event-continue">继续</button>
+  `, { noClose: true }), finish, { reveal: true, paperSegments: option.paperSegments });
+}
+
+/**
+ * 接着播同一天 events 里指定 id 的事件（option.next）。被串的事件不该写 loc——写了的话
+ * 它同时也会挂在那个地点上，玩家没走到这一步也能点出来。不耗时间：串起来的几段属于
+ * 同一次交互，时间在进这个地点时已经推过了。
+ */
+function playChainedEvent(id) {
+  const dayContent = getDayContent();
+  const next = (dayContent.events || []).find(e => e.id === id);
+  if (!next || state.triggeredEvents.includes(next.id)) {
+    if (!next) console.warn(`[choice] option.next 指向的事件不存在：${id}`);
+    closeModal();
+    afterInvestigation();
+    return;
+  }
+  playEvent(next);
+}
+
 // ---------- 事件正文分页 ----------
 //
 // 事件正文（events[].text / diceCheck 的 outcome.text）按 \n 拆成几"页"：内容作者
@@ -982,6 +1133,8 @@ function advanceDay() {
     || Object.keys(content.days).filter(k => k !== 'meta').length;
 
   if (state.day >= total) {
+    // 走到这里的只剩"平安开出小镇"那一类：走到高潮抉择并选完的人，在 pickChoice 里
+    // 当场就进结局窗口了，根本不会回来睡这一觉（见 ending.js decide 的注释）。
     const decision = endingSys.decide(state);
     state.ending = decision.id;
     saveState(state);

@@ -74,6 +74,14 @@
     "linkedMainCase": true
   },
 
+  "meridian": {
+    "title": "子午线仪",
+    "category": "物品",
+    "body": "拼在一起的三样东西：铁路信号设备、工厂的压力仪表，和一圈从盐层里长出来的晶体。1982 年有人用它把整座白湖镇从时间里剪了下来，机器本身留在[[废弃工厂|alkaliWorks]]地下的现实这一侧——这是整个封印唯一摸得到的部分。它现在在漏。",
+    "unlockedBy": ["keyword_click", "event:e_finale"],
+    "linkedMainCase": false
+  },
+
   "room_key": {
     "title": "108 号房间钥匙",
     "category": "物品",

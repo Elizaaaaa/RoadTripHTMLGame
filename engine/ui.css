@@ -300,6 +300,28 @@ button:disabled:hover, .btn:disabled:hover { background: rgba(255, 255, 255, 0.0
 }
 .btn-option:hover { background: rgba(255, 255, 255, 0.1); border-color: var(--accent-2); color: #fff; }
 
+/* --- 抉择事件（days.json 的 type:'choice'，见 main.js renderChoiceOptions）的选项按钮。
+   比普通 .btn-option 高一点、行距松一点：这里摆的是决定结局的那一两个选项，不该跟
+   "继续"长得一样随手。hint 是选项底下那行小字（镇民的说辞/两人的顾虑），可以不写。 --- */
+.choice-list { margin-top: 14px; }
+
+.choice-btn {
+  padding: 10px 14px;
+  margin-bottom: 8px;
+  line-height: 1.6;
+}
+
+.choice-label { display: block; }
+
+.choice-hint {
+  display: block;
+  margin-top: 4px;
+  font-size: 0.86em;
+  color: #8a8a8a;
+}
+
+.choice-btn:hover .choice-hint { color: #b8b8b8; }
+
 /* --- 弹窗：仿 macOS 悬浮窗口（毛玻璃 + 红黄绿交通灯），配合状态栏营造"在自己电脑桌面上
    查看结果"的感觉。窗口本身由 main.js 的 renderWindow() 统一拼出 .mac-titlebar/.mac-body。 --- */
 .modal-overlay {
@@ -366,6 +388,11 @@ button:disabled:hover, .btn:disabled:hover { background: rgba(255, 255, 255, 0.0
 .mac-dot-yellow { background: var(--traffic-yellow); }
 .mac-dot-green { background: var(--traffic-green); }
 .mac-titlebar:hover .mac-dot { color: rgba(0,0,0,0.55); }
+/* 关不掉的窗口（renderWindow 的 noClose 选项，目前只有高潮抉择在用）：红灯还在原位，
+   但是暗的、也不再有那个 ×——明示这一步没有退路，而不是让玩家点了才发现点不动。 */
+.mac-dot-off { background: rgba(255, 255, 255, 0.13); }
+.mac-titlebar:hover .mac-dot-off { color: transparent; }
+
 .mac-dot-red::before { content: "×"; }
 .mac-dot-yellow::before { content: "−"; }
 .mac-dot-green::before { content: "+"; }

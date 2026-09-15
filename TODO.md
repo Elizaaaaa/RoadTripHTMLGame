@@ -54,8 +54,8 @@
 
 - [ ] **手机顶部假状态栏**：加一条 iOS 风格状态栏，信号显示**「无服务」**——白湖镇本来就只有加油站有信号，这个细节很值。纯 CSS/SVG 不用出图，说一声我就加
 - [ ] **字体**：prompt 里提到的 Neue Haas Unica / Helvetica Now Display 是商业字体，仓库里没有。有授权的 woff2 就扔进 `assets/fonts/`，我接上；现在走系统栈（中文落苹方/微软雅黑）
-- [ ] **结局模型重构**：`engine/ending.js` + `content/endings.json` 还是旧的"探索进度 × San 值 2×2 四结局"，设计已确认改成 3 结局新模型（San 熔断/进度不够 → 结局①，达标后由高潮抉择二选一给结局②/③），见 `design-doc.md` 5.3 节。等正式大纲到位后和内容一起改
-- [ ] **San 值瞬时熔断钩子**：`design-doc.md` 5.3 节第 1 条要求 `sanityCost` 每次调整后立即检查、跌破阈值就强制终局，现在引擎里还没有这个钩子
+- [x] **结局模型重构**（已完成）：`engine/ending.js` + `content/endings.json` 已按 `content/drafts/outline.md` 的五结局模型重写——午夜未归 → `night_madness`；关键线索没收齐 → `oblivious`；收齐后由第 3 天废弃工厂那次高潮抉择的两问（砸/修子午线仪、救不救婴儿）给出 `god_arrival`/`past_stays_buried`/`salvation_in_ruin`。引擎侧新增 `type:"choice"` 抉择事件和事件的 `requires` 门槛，见 `design-doc.md` 5.3 节
+- [x] **San 值瞬时熔断钩子**（已取消）：五结局模型里 San 值不再参与结局判定，这个钩子不做了；San 值现在只影响掷骰取值、低理智演出和结局文案变体（见 `design-doc.md` 5.3 节末尾那条）
 - [ ] **游戏名在页面内可见**：`index.html` 的 `<title>` 已是正式名，但 `#status-bar` 里没有展示位（见 `content/worldbuilding.md` 末尾）
 
 ---
@@ -66,6 +66,6 @@
 - [ ] **核心神话真相落地**：已经确认的那套真相还只在对话里，没写进 `content/worldbuilding.md` / `content/archive.json`，也没有对应的主线事件
 - [ ] **主角 / 频道正式命名**：QQ、BB 是占位名，现在手机数据页的频道名 `meta.channel` 直接写的 `QQ & BB`，定了名字这里一起改
 - [ ] **第 3 天的 M7.1 走不到**：地震按当天分钟数触发（`timedEvents`，M7.1 配在 20:19），而时间只在"去调查地点"时推进、每次 1 小时，第 3 天现在只有 3 个事件，最多走到 11 点。等第 3 天点位/事件补够（约 13 次交互）它才会真的在流程里弹出来；在那之前这条地震只靠结局后日谈里的新闻兑现，不算漏（见 `design-doc.md` 1.6 节）
-- [ ] **六个新点位还是空的**：`hotel` / `tavern` / `museum` / `highSchool` / `alkaliWorks` / `theSink` 只有坐标和显示名，没有事件挂上去，也不在任何一天的 `unlockedLocations` 里
+- [ ] **四个新点位还是空的**：`tavern` / `museum` / `highSchool` 只有坐标和显示名，没有事件挂上去，也不在任何一天的 `unlockedLocations` 里（`hotel`、`theSink` 已有事件；`alkaliWorks` 第 3 天开放，挂着高潮抉择 `e_finale` 和它的兜底事件）
 - [ ] **制碱公司 / 山谷的情节**：White Lake Alkali Company、White Lake Valley 两个已确认设定还没有任何词条和事件承接
 - [ ] **vlog 评论区文案**：`days.json` 每天的 `vlogComments` 现在是占位示例，正式剧本时按天重写（`alien: true` 那条是"置顶不是我们发的"那种诡异评论，别浪费这个位置）
