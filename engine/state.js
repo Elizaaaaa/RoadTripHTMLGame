@@ -5,7 +5,7 @@ import { createFinale } from './ending.js';
 
 // 版本号在每次改动后递增：旧存档会挂在旧 key 下面，读不到就自动当新档处理，
 // 不需要玩家手动清 localStorage 就能获得一次"从头开始"的测试。
-const SAVE_KEY = 'roadtrip1_save_v38';
+const SAVE_KEY = 'roadtrip1_save_v40';
 
 /**
  * 新开一局的初始状态。
@@ -36,6 +36,9 @@ export function createInitialState(day1Content) {
     },
 
     signalToday: [],         // 当天已弹出的信号闪现记录，回加油站时汇总展示
+    chatLog: [],             // QQ/BB 聊天记录，全程累积不清空：{ day, minutes, eventId, dlg, speaker, text }。
+                             // chat.js 演的是"正在发生"那一段，事件窗一关就收；这里留的是玩家
+                             // 事后能在手机「信息」里往回翻的那份，跟记事本一样不随换天清掉
     usedNewspaperToday: false, // 翻旧报纸每天限一次
 
     completedReviews: [],    // 已完成的复盘事件 id

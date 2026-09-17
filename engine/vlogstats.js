@@ -28,7 +28,8 @@ const DEFAULT_CHANNEL = { name: 'QQ & BB', handle: '@on_the_road' };
 
 let viewMode = 'today';  // 'today' | 'total'，顶部胶囊切换本期/累计
 let favIndex = 0;        // 最热片段卡当前显示第几条素材（右侧按钮循环切换）
-let ctx = null;          // 本次打开用到的全部数据，见 open()
+let ctx = null;          // 本次打开用到的全部数据，见 buildScreen()
+let onBackCb = null;     // 从主屏点进来时的"返回主屏"；直接弹出时是 null，那两颗按钮就是收手机
 
 // ---------- 确定性随机 ----------
 
@@ -235,6 +236,17 @@ function favoriteHTML() {
 }
 
 function commentsHTML() {
+  // 没信号：评论是要现拉的，转着圈也出不来——这是"镇里只有加油站能联网"那条设定的显示端
+  if (ctx.offline) {
+    return `
+      <div class="phone-card phone-block" id="phone-comments">
+        <div class="phone-block-title"><span>评论区</span><span class="phone-block-value">—</span></div>
+        <div class="phone-loading">
+          <span class="phone-spinner"></span>
+          <span>加载不出来……</span>
+        </div>
+      </div>`;
+  }
   // 标题右边是派生出来的评论总数，下面只列内容里写到的那几条（观感上就是"只显示热评"）
   if (ctx.comments.length === 0) {
     return `<div class="phone-card phone-block" id="phone-comments">
@@ -261,7 +273,7 @@ function commentsHTML() {
 
 /** 屏幕里的内容——外壳（中框/刘海/状态栏）由 phone.js 画，这里只管手机屏幕里显示什么。 */
 function contentHTML() {
-  const { stats, total, channel, title, cover, day, glitch } = ctx;
+  const { stats, total, channel, title, cover, day, glitch, offline } = ctx;
   return `
     <div class="phone-hero">
       <img class="phone-hero-img" src="${escapeHTML(cover)}" alt="">
@@ -271,7 +283,7 @@ function contentHTML() {
         <button class="glass circle" id="phone-btn-comments" title="看评论">${ICONS.comment}</button>
         <button class="glass circle" id="phone-btn-close" title="收起手机">${ICONS.close}</button>
       </div>
-      <div class="phone-hero-meta">第 ${day} 天 · 刚刚发布</div>
+      <div class="phone-hero-meta">第 ${day} 天 · ${offline ? '上次同步' : '刚刚发布'}</div>
     </div>
 
     <div class="phone-identity">
@@ -279,6 +291,12 @@ function contentHTML() {
       <div class="phone-name">${escapeHTML(channel.name)}</div>
       <div class="phone-subtitle">${escapeHTML(title)}</div>
     </div>
+
+    ${offline ? `
+    <div class="phone-offline">
+      <span class="phone-offline-dot"></span>
+      <span>离线 · 这是上次在加油站同步下来的数据</span>
+    </div>` : ''}
 
     <div class="phone-toggle-row">
       <button class="glass pill phone-toggle" id="phone-toggle">
@@ -303,7 +321,7 @@ function contentHTML() {
     ${commentsHTML()}
 
     <div class="phone-actions">
-      <button class="glass pill" id="phone-btn-done">收起手机，回房休息</button>
+      <button class="glass pill" id="phone-btn-done">${onBackCb ? '返回主屏' : '收起手机，回房休息'}</button>
     </div>`;
 }
 
@@ -331,8 +349,10 @@ function playNumbers(delayMs) {
 }
 
 function wire() {
-  document.getElementById('phone-btn-close').addEventListener('click', phone.close);
-  document.getElementById('phone-btn-done').addEventListener('click', phone.close);
+  // 直接弹出来的（发布之后那一次）：这两颗按钮是收手机；从主屏点进来的：是退回主屏
+  const leave = onBackCb || phone.close;
+  document.getElementById('phone-btn-close').addEventListener('click', leave);
+  document.getElementById('phone-btn-done').addEventListener('click', leave);
 
   document.getElementById('phone-btn-comments').addEventListener('click', () => {
     const target = document.getElementById('phone-comments');
@@ -369,7 +389,51 @@ function wireFav() {
 }
 
 /**
- * 弹出 vlog 数据页（手机从画面上方落到正中）。
+ * 备好这一屏的内容。两个调用方共用：
+ *   · open()      —— 发布之后自己弹一台手机出来（从画面上方落到正中）；
+ *   · home.js     —— 玩家在主屏上点"后台"，走 phone.setScreen 机内换屏，手机不重新进场。
+ * @param {object} opts 见 open() 的说明，另外可传 onBack（从主屏进来时的"返回主屏"）
+ * @returns {{html: string, onMount: Function}|null} 那天没有发布记录时返回 null
+ */
+export function buildScreen(opts) {
+  const state = opts.state;
+  const day = opts.day || state.day;
+  const entry = getEntry(state, day);
+  if (!entry) return null;
+
+  const stats = ensureStats(entry);
+  const dayContent = opts.dayContent || {};
+  onBackCb = opts.onBack || null;
+
+  ctx = {
+    day,
+    stats,
+    total: totals(state),
+    channel: { ...DEFAULT_CHANNEL, ...(opts.channel || {}) },
+    title: dayContent.vlogTitle || `第 ${day} 天的素材`,
+    cover: opts.cover || 'assets/maps/white-lake-map-now.png',
+    comments: collectComments(state, dayContent),
+    // 镇内无服务时从主屏点进来：数据拉不下来，显示的是上次同步的缓存，评论区转不出来
+    offline: !!opts.offline,
+    ranked: [...stats.replays].sort((a, b) => b.count - a.count),
+    glitch: entry.glitched
+      ? '这期素材出了点问题，有几段画面糊掉了——数据比平时难看。'
+      : (entry.tier === 'breaking' ? '后台在这期视频上标了"猎奇"标签。数据好得有点反常。' : '')
+  };
+  viewMode = 'today';
+  favIndex = 0;
+
+  return {
+    html: contentHTML(),
+    onMount: () => {
+      document.getElementById('phone-overlay').classList.toggle('phone-glitch', !!ctx.glitch);
+      wire();
+    }
+  };
+}
+
+/**
+ * 发布之后自己弹一台手机出来看数据（从画面上方落到正中）。
  * @param {object} opts
  *   state       —— 全局状态（读 publishLog / signalToday）
  *   dayContent  —— 当天内容数据（读可选的 vlogTitle / vlogComments）
@@ -380,46 +444,22 @@ function wireFav() {
  * @returns {boolean} 当天没有发布记录时返回 false（调用方应直接走 onClose 那一步）
  */
 export function open(opts) {
-  const state = opts.state;
-  const day = opts.day || state.day;
-  const entry = getEntry(state, day);
-  if (!entry) return false;
-
-  const stats = ensureStats(entry);
-  const dayContent = opts.dayContent || {};
-
-  ctx = {
-    day,
-    stats,
-    total: totals(state),
-    channel: { ...DEFAULT_CHANNEL, ...(opts.channel || {}) },
-    title: dayContent.vlogTitle || `第 ${day} 天的素材`,
-    cover: opts.cover || 'assets/maps/white-lake-map-now.png',
-    comments: collectComments(state, dayContent),
-    ranked: [...stats.replays].sort((a, b) => b.count - a.count),
-    glitch: entry.glitched
-      ? '这期素材出了点问题，有几段画面糊掉了——数据比平时难看。'
-      : (entry.tier === 'breaking' ? '后台在这期视频上标了"猎奇"标签。数据好得有点反常。' : '')
-  };
-  viewMode = 'today';
-  favIndex = 0;
+  const screen = buildScreen(opts);
+  if (!screen) return false;
 
   // 注意别在 onUnmount 里清 ctx：装新 app 时 phone.mount() 会先把旧的静默卸掉，
-  // 那一步跑在本次 open 设好 ctx 之后、onMount 之前，清了的话 wire() 立刻就读到 null。
+  // 那一步跑在本次 buildScreen 设好 ctx 之后、onMount 之前，清了的话 wire() 立刻就读到 null。
   return phone.mount({
     id: 'vlogstats',
     pose: 'center',
     enter: 'drop',
-    // 这一页只在加油站看得到——发布成功本身就说明当时有信号，所以状态栏是通的。
-    // 镇内那些"无服务"的场合由别的 app 自己传 false，见 phone.js 文件头。
+    // 发布成功本身就说明当时在加油站、有信号，所以这一次状态栏是通的。
+    // 从主屏点进来的那条路由 home.js 按玩家当前位置决定，见 phone.js 文件头的信号规则。
     signal: true,
-    clock: opts.clock != null ? opts.clock : state.minutes,
+    clock: opts.clock != null ? opts.clock : opts.state.minutes,
     scrollHint: true,
-    html: contentHTML(),
-    onMount: () => {
-      document.getElementById('phone-overlay').classList.toggle('phone-glitch', !!ctx.glitch);
-      wire();
-    },
+    html: screen.html,
+    onMount: screen.onMount,
     onClose: opts.onClose || null
   });
 }

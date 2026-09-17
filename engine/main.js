@@ -15,6 +15,7 @@ import * as vlogStats from './vlogstats.js';
 import * as signalSys from './signal.js';
 import * as dialogueSys from './dialogue.js';
 import * as chatSys from './chat.js';
+import * as homeSys from './home.js';
 import * as basecampSys from './basecamp.js';
 import * as endingSys from './ending.js';
 import * as quakeSys from './quake.js';
@@ -429,6 +430,32 @@ function openVlogPhone(day = state.day, onClose = openHotelNight) {
   // 首次打开会把派生出来的数据缓存进 publishLog 那条记录，存一次档让它固定下来
   if (opened) saveState(state);
   else if (onClose) onClose(); // 那天没有发布记录（比如超时未归），直接走下一步
+}
+
+// ---------- 玩家主动掏出手机 ----------
+//
+// 顶部菜单的「📱 手机」：手机从底下升到画面正中，停在主屏，点外面的暗幕或按 Esc 收起。
+// **不消耗游戏内时间**——它跟记事本、调查回顾一样是查阅界面，不是一次资源决策。
+// 里面装什么、没信号时各个 app 怎么表现，全在 engine/home.js。
+
+/** 当前有没有信号：全镇只有加油站能稳定联网（design-doc.md 第 20 行）。 */
+function hasSignalNow() {
+  return state.location === 'gasStation';
+}
+
+function openPhoneHome() {
+  // QQ/BB 正聊到一半：那台手机占着屏幕，而且事件窗的"继续"还锁着，这会儿别去抢
+  if (chatSys.isShowing()) {
+    showToast('QQ 和 BB 正说着话呢');
+    return;
+  }
+  homeSys.open({
+    state,
+    content,
+    hasSignal: hasSignalNow(),
+    clock: state.minutes,
+    dayLabel: day => timeSys.formatDayDate(content.days[String(day)], day)
+  });
 }
 
 // ---------- 沙狐旅馆：发布之后的"回房休息" → 进入下一天 ----------
@@ -959,6 +986,7 @@ function maybePlayDialogue(eventId, segmentIndex, totalSegments) {
   hint.className = 'hint chat-wait-hint';
   hint.textContent = 'QQ 和 BB 正在讨论……';
   btn.insertAdjacentElement('beforebegin', hint);
+  recordChatLog(dialogue, eventId);
   chatSys.play(dialogue, eventId, {
     clock: state.minutes,
     renderText: text => kw.parseKeywords(text, k => archiveSys.isUnlocked(state, k)),
@@ -968,6 +996,27 @@ function maybePlayDialogue(eventId, segmentIndex, totalSegments) {
       hint.remove();
     }
   });
+}
+
+/**
+ * 把这段对话写进存档，供玩家事后在手机「信息」里往回翻（见 home.js 的 openMessages）。
+ * 一段对话只记一次：同一页的"继续"按钮重渲染、时间线回退之后重播同一个事件，
+ * 都不该在聊天记录里留下第二份。
+ */
+function recordChatLog(dialogue, eventId) {
+  state.chatLog ||= [];
+  if (state.chatLog.some(e => e.dlg === dialogue.id && e.eventId === eventId)) return;
+  for (const line of dialogue.lines || []) {
+    state.chatLog.push({
+      day: state.day,
+      minutes: state.minutes,
+      eventId,
+      dlg: dialogue.id,
+      speaker: line.speaker,
+      text: line.text
+    });
+  }
+  saveState(state);
 }
 
 // ---------- 超时未归 ----------
@@ -1287,12 +1336,18 @@ function clipIconHTML(clueId) {
     </div>`;
 }
 
-function clipBlockHTML(clueId, idx) {
+/**
+ * @param {boolean} [locked] 编辑页已锁定（确认发布后的反馈态）。锁定时不再画叉号、
+ *        也不再挂 draggable：那一步不会再挂拖拽/删除的事件（见 renderPublishEditor
+ *        里的 if (done) return），再留着这两个手势就是个点不动的死按钮——
+ *        点它只会冒泡到素材块上、弹出素材简介。
+ */
+function clipBlockHTML(clueId, idx, locked) {
   const m = reviewSys.getMaterial(clueId);
   return `
-    <div class="clip-block imp-${m.importance}" draggable="true" data-idx="${idx}" data-clue="${clueId}" title="${m.label}">
+    <div class="clip-block imp-${m.importance}${locked ? ' locked' : ''}" ${locked ? '' : 'draggable="true"'} data-idx="${idx}" data-clue="${clueId}" title="${m.label}">
       <span class="clip-block-label">${m.label}</span>
-      <button class="clip-block-remove" data-idx="${idx}" title="移出时间轴">×</button>
+      ${locked ? '' : `<button class="clip-block-remove" data-idx="${idx}" title="移出时间轴">×</button>`}
     </div>`;
 }
 
@@ -1494,7 +1549,7 @@ function renderPublishEditor(dayContent, result) {
       <div class="editor-panel-label">时间轴</div>
       <div class="timeline-track" id="timeline-track">
         ${publishEditorTimeline.length
-          ? publishEditorTimeline.map(clipBlockHTML).join('')
+          ? publishEditorTimeline.map((id, i) => clipBlockHTML(id, i, done)).join('')
           : '<div class="timeline-empty">把素材库里的素材拖到这里</div>'}
       </div>
 
@@ -1728,6 +1783,7 @@ function wireStatusButtons() {
   document.getElementById('btn-tracker').addEventListener('click', openTracker);
   document.getElementById('btn-review').addEventListener('click', openClipEditor);
   document.getElementById('btn-time-control').addEventListener('click', openTimeControl);
+  document.getElementById('btn-phone').addEventListener('click', openPhoneHome);
 }
 
 function wireMapControls() {

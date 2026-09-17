@@ -73,6 +73,7 @@
 <body>
   <div id="panel">
     <label>app <select id="sel-app">
+      <option value="home">主屏（玩家呼出）</option>
       <option value="vlog">vlog 数据页</option>
       <option value="chat">QQ &amp; BB 聊天</option>
     </select></label>
@@ -117,6 +118,7 @@
 import * as reviewSys from '../engine/review.js';
 import * as vlogStats from '../engine/vlogstats.js';
 import * as chatSys from '../engine/chat.js';
+import * as homeSys from '../engine/home.js';
 import * as phone from '../engine/phone.js';
 import * as kw from '../engine/keyword-parser.js';
 
@@ -146,12 +148,33 @@ const dialoguesOfDay = () => (days[String(currentDay())] || {}).dialogues || [];
 
 /** 切 app 时换掉面板下半截，并把停靠位调到这个 app 平时用的那个 */
 function syncPanel() {
-  const isChat = $('sel-app').value === 'chat';
-  $('grp-vlog').classList.toggle('off', isChat);
-  $('grp-chat').classList.toggle('off', !isChat);
-  $('sel-pose').value = isChat ? 'corner' : 'center';
-  $('chk-signal').checked = !isChat; // 聊天在镇里播，状态栏是"无服务"
-  if (isChat) fillDialogueList();
+  const app = $('sel-app').value;
+  $('grp-vlog').classList.toggle('off', app !== 'vlog');
+  $('grp-chat').classList.toggle('off', app !== 'chat');
+  $('sel-pose').value = app === 'chat' ? 'corner' : 'center';
+  // 聊天在镇里播；主屏默认也按"在镇里"来，好看无服务那套表现。发布后的数据页一定在加油站。
+  $('chk-signal').checked = app === 'vlog';
+  if (app === 'chat') fillDialogueList();
+}
+
+/**
+ * 造一份够用的假 state：主屏的「信息」读 chatLog、「后台」读 publishLog。
+ * chatLog 直接拿当天以及之前几天配好的对话摊平，模拟"一路玩过来攒下的聊天记录"。
+ */
+function fakeState(day) {
+  const publishLog = [];
+  const chatLog = [];
+  for (let d = 1; d <= day; d++) {
+    const dd = days[String(d)] || {};
+    const clues = cluesOfDay(dd);
+    publishLog.push({ day: d, playcount: 100 + clues.length * 50, glitched: false, tier: 'clear', clues });
+    for (const dlg of dd.dialogues || []) {
+      for (const line of dlg.lines || []) {
+        chatLog.push({ day: d, minutes: 600, eventId: dlg.afterEvent, dlg: dlg.id, speaker: line.speaker, text: line.text });
+      }
+    }
+  }
+  return { day, minutes: 600, publishLog, chatLog, signalToday: (days[String(day)] || {}).signalPool || [] };
 }
 
 function fillDialogueList() {
@@ -162,9 +185,21 @@ function fillDialogueList() {
 }
 
 function render() {
-  if ($('sel-app').value === 'chat') renderChat();
+  const app = $('sel-app').value;
+  if (app === 'chat') renderChat();
+  else if (app === 'home') renderHome();
   else renderVlog();
   applyShell();
+}
+
+function renderHome() {
+  homeSys.open({
+    state: fakeState(currentDay()),
+    content: { days, map: { mapImage: '../assets/maps/white-lake-map-now.png' } },
+    hasSignal: $('chk-signal').checked,
+    clock: $('inp-clock').value,
+    dayLabel: d => (days[String(d)] || {}).date || `第 ${d} 天`
+  });
 }
 
 function renderVlog() {
@@ -225,9 +260,12 @@ $('sel-day').addEventListener('change', () => {
 for (const id of ['sel-tier', 'chk-glitch', 'sel-dlg']) {
   $(id).addEventListener('change', render);
 }
-for (const id of ['sel-pose', 'chk-signal']) {
-  $(id).addEventListener('change', applyShell);
-}
+$('sel-pose').addEventListener('change', applyShell);
+// 信号不只是状态栏上的一格：主屏里「后台」的离线表现要跟着变，所以这一档整屏重来
+$('chk-signal').addEventListener('change', () => {
+  if ($('sel-app').value === 'home') render();
+  else applyShell();
+});
 $('inp-clock').addEventListener('input', applyShell);
 
 syncPanel();

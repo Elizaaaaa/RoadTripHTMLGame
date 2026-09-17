@@ -668,6 +668,8 @@ button:disabled:hover, .btn:disabled:hover { background: rgba(255, 255, 255, 0.0
   touch-action: none;
 }
 .clip-block.dragging { opacity: 0.35; }
+/* 确认发布后的锁定态：右边不再给叉号留位，鼠标也不再做出可拖的样子 */
+.clip-block.locked { padding-right: 10px; cursor: default; }
 
 /* 触屏拖拽时跟着手指走的浮动副本，鼠标端的原生拖拽不会用到这个 */
 .clip-drag-ghost {

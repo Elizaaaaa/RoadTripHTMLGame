@@ -693,6 +693,154 @@
 .phone-actions .glass.pill:hover { background: #1a88ff; }
 
 /* ==========================================================================
+   主屏（engine/home.js）—— 玩家自己掏出手机看到的那一屏
+   ========================================================================== */
+
+.home-screen {
+  position: relative;
+  /* 正好占满一屏、不多出一条能滚的边：812 减掉内容层给底部横条留的那 34px。
+     注意别反过来去改 .phone-content 的 padding——那一层是所有 app 共用的，
+     从主屏点进「信息」「后台」之后还得留着这段空隙给底部横条。 */
+  height: 778px;
+  padding: 72px 18px 0; /* 上面让开状态栏 + 刘海 */
+  /* 壁纸：没有图片素材，用一层夜色渐变顶上。暖色那两团呼应中框，
+     不然亮白的 app 图标浮在纯深蓝上会跟整机脱节。 */
+  background:
+    radial-gradient(ellipse 70% 42% at 22% 12%, rgba(196, 92, 40, 0.34), transparent 70%),
+    radial-gradient(ellipse 60% 38% at 86% 78%, rgba(72, 54, 120, 0.42), transparent 72%),
+    linear-gradient(168deg, #2a1c22 0%, #1b1a2c 52%, #101019 100%);
+}
+
+.home-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 26px 14px;
+}
+
+.home-app {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 7px;
+  padding: 0;
+  border: none;
+  background: none;
+  font-family: inherit;
+  cursor: pointer;
+  transition: transform 0.14s ease, opacity 0.14s ease;
+}
+.home-app:active { transform: scale(0.90); opacity: 0.72; }
+
+/* 图标：iOS 的圆角方块（60px 配 13.5px 圆角就是那个比例），上缘一道高光当玻璃面 */
+.home-icon {
+  width: 60px;
+  height: 60px;
+  border-radius: 13.5px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.28),
+    0 3px 10px rgba(0, 0, 0, 0.42);
+}
+.home-icon svg { width: 34px; height: 34px; display: block; }
+
+.app-green { background: linear-gradient(180deg, #5df675, #16ba33); }
+.app-blue  { background: linear-gradient(180deg, #3aa0ff, #0b5bd3); }
+.app-warm  { background: linear-gradient(180deg, #ffd36b, #f2703a); }
+
+.home-label {
+  font-size: 11px;
+  color: #fff;
+  letter-spacing: 0.02em;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.6);
+}
+
+/* 分页小圆点：摆设，但少了它主屏就不像主屏 */
+.home-dots {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 14px;
+  display: flex;
+  justify-content: center;
+  gap: 7px;
+}
+.home-dots i {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.32);
+}
+.home-dots i.on { background: rgba(255, 255, 255, 0.92); }
+
+/* --- 从主屏点进去的各个 app 共用的：导航栏标题 + 空状态 --- */
+
+.chat-back { border: none; background: none; padding: 0; cursor: pointer; }
+.app-title { font-size: 16px; font-weight: 600; }
+.app-subtitle { font-size: 11px; color: var(--pmuted); }
+
+.app-empty-thread { justify-content: center; align-items: center; }
+.app-empty { text-align: center; padding: 0 32px; }
+.app-empty-title { font-size: 17px; font-weight: 600; color: var(--ptext); }
+.app-empty-sub { margin-top: 8px; font-size: 13px; line-height: 1.6; color: var(--pmuted); }
+
+/* 聊天记录里按天分的那道横线：iOS「信息」往回翻时每一段前面那行居中小字 */
+.chat-daymark {
+  align-self: center;
+  margin: 18px 0 10px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--pmuted);
+}
+.chat-row + .chat-daymark { margin-top: 22px; }
+
+/* --- 离线（镇内无服务）：后台页显示的是上次同步的缓存 --- */
+
+.phone-offline {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  margin: 18px 16px 0;
+  padding: 8px 12px;
+  border-radius: 12px;
+  font-size: 12px;
+  color: #8a6d3b;
+  background: rgba(255, 149, 0, 0.12);
+  box-shadow: inset 0 0 0 1px rgba(255, 149, 0, 0.22);
+}
+.phone-offline-dot {
+  width: 7px;
+  height: 7px;
+  flex: none;
+  border-radius: 50%;
+  background: var(--porange);
+}
+
+/* 评论区拉不下来时那个转圈 */
+.phone-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  padding: 22px 0 14px;
+  font-size: 13px;
+  color: var(--pmuted);
+}
+.phone-spinner {
+  width: 15px;
+  height: 15px;
+  flex: none;
+  border-radius: 50%;
+  border: 2px solid rgba(60, 60, 67, 0.18);
+  border-top-color: rgba(60, 60, 67, 0.5);
+  animation: phoneSpin 0.85s linear infinite;
+}
+@keyframes phoneSpin { to { transform: rotate(360deg); } }
+
+/* ==========================================================================
    app：QQ/BB 聊天（engine/chat.js）
    仿 iOS 12 的「信息」。1:1 会话里**没有头像也没有名字**，只有靠左的灰气泡和靠右的
    蓝气泡——蓝色是手机主人（BB），对方（QQ）的名字挂在顶部导航栏上。

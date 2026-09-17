@@ -180,6 +180,7 @@ export function setClock(value) {
  *   signal      —— 状态栏有没有信号，默认 false（镇内无服务）
  *   clock       —— 状态栏时间：分钟数或 'HH:MM' 字符串
  *   scrollHint  —— 是否显示手机左边那列"向下滑动查看更多"，默认 false
+ *   dismissable —— 点手机外面的暗幕 / 按 Esc 能不能收起来，默认 false（玩家主动呼出时传 true）
  *   onMount     —— 内容填好、动画起步之后回调 (scroller, api)
  *   onUnmount   —— 卸载时回调，用来清 app 自己的定时器
  *   onClose     —— 手机收起来之后走的下一步
@@ -220,8 +221,27 @@ export function mount(app) {
   const scroller = document.getElementById('phone-screen');
   wireDragScroll(scroller);
   if (current.scrollHint) wireScrollHint(scroller);
+  if (current.dismissable) wireDismiss();
 
   if (current.onMount) current.onMount(scroller, { setPose, setSignal, setClock, close });
+  return true;
+}
+
+/**
+ * 机内换屏：只把屏幕里的内容换掉，手机本身不动（不重新进场、不换姿态）。
+ * 主屏点进某个 app、再从 app 退回主屏，走的都是这条——观感上就是在同一台手机里翻页，
+ * 而不是"关掉一台手机再掏出另一台"。滚动位置一并归零。
+ * @param {string} html 新的屏幕内容
+ * @param {Function} [onMount] 填好之后的回调，用来挂这一屏自己的事件
+ */
+export function setScreen(html, onMount) {
+  if (!current) return false;
+  const holder = document.getElementById('phone-content');
+  if (!holder) return false;
+  holder.innerHTML = html;
+  const scroller = getScroller();
+  if (scroller) scroller.scrollTop = 0;
+  if (onMount) onMount(scroller);
   return true;
 }
 
@@ -331,6 +351,20 @@ function wireDragScroll(screen) {
     window.removeEventListener('pointerup', onUp);
     window.removeEventListener('pointercancel', onUp);
   });
+}
+
+/**
+ * 玩家自己掏出来的手机得有个收起来的办法：点手机外面那片暗幕，或者按 Esc。
+ * 只给 mount 时传了 dismissable 的那些场合挂（发布之后那台手机不挂——它有自己的
+ * "收起手机，回房休息"按钮，而且那一步是流程的一环，不该能随手点掉）。
+ */
+function wireDismiss() {
+  const backdrop = document.querySelector('#phone-overlay .phone-backdrop');
+  if (backdrop) backdrop.addEventListener('click', () => unmount());
+
+  const onKey = e => { if (e.key === 'Escape') unmount(); };
+  window.addEventListener('keydown', onKey);
+  teardown.push(() => window.removeEventListener('keydown', onKey));
 }
 
 /** 手机左边那列"向下滑动查看更多"：点一下往下翻一屏，玩家自己滚了就淡出，不再出现。 */
