@@ -55,6 +55,7 @@
 - [ ] **手机顶部假状态栏**：加一条 iOS 风格状态栏，信号显示**「无服务」**——白湖镇本来就只有加油站有信号，这个细节很值。纯 CSS/SVG 不用出图，说一声我就加
 - [ ] **字体**：prompt 里提到的 Neue Haas Unica / Helvetica Now Display 是商业字体，仓库里没有。有授权的 woff2 就扔进 `assets/fonts/`，我接上；现在走系统栈（中文落苹方/微软雅黑）
 - [x] **结局模型重构**（已完成）：`engine/ending.js` + `content/endings.json` 已按 `content/drafts/outline.md` 的五结局模型重写——午夜未归 → `night_madness`；关键线索没收齐 → `oblivious`；收齐后由第 3 天废弃工厂那次高潮抉择的两问（砸/修子午线仪、救不救婴儿）给出 `god_arrival`/`past_stays_buried`/`salvation_in_ruin`。引擎侧新增 `type:"choice"` 抉择事件和事件的 `requires` 门槛，见 `design-doc.md` 5.3 节
+- [x] **结局之后的时间线回退**（已完成）：走到任何一个结局，最后一页都多两条回头路——「从某个时间点继续」（按天列出这一局走过的每一个整点，"7月4日 14:00"）和「回到某个重大抉择」（是否摧毁子午线仪 / 是否要帮助婴儿，回到选项还没摆出来的那一刻、事件重播一遍）。实现是 `engine/state.js` 的存档点链（每天出发 / 每个整点 / 每个抉择各记一份快照），地图上"时间线"按钮那两个旧入口也改吃这条链。回退时先播一段监控信号异常的转场（`engine/glitch.js`，零美术素材，顺带把换挡那一下遮在雪花后面），调参用 `tools/glitch-preview.html`。见 `design-doc.md` 5.6 节
 - [x] **San 值瞬时熔断钩子**（已取消）：五结局模型里 San 值不再参与结局判定，这个钩子不做了；San 值现在只影响掷骰取值、低理智演出和结局文案变体（见 `design-doc.md` 5.3 节末尾那条）
 - [ ] **游戏名在页面内可见**：`index.html` 的 `<title>` 已是正式名，但 `#status-bar` 里没有展示位（见 `content/worldbuilding.md` 末尾）
 
@@ -65,7 +66,9 @@
 - [ ] **正式剧本**：`content/days.json` 现在整份是"违约金 / 看守人 / 胸针"那套占位剧情，等大纲到位后整体替换。写法走 `content/drafts/`（手机上写 `## [PENDING]` 段落，回电脑说一声"看一下草稿"）
 - [ ] **核心神话真相落地**：已经确认的那套真相还只在对话里，没写进 `content/worldbuilding.md` / `content/archive.json`，也没有对应的主线事件
 - [ ] **主角 / 频道正式命名**：QQ、BB 是占位名，现在手机数据页的频道名 `meta.channel` 直接写的 `QQ & BB`，定了名字这里一起改
-- [ ] **第 3 天的 M7.1 走不到**：地震按当天分钟数触发（`timedEvents`，M7.1 配在 20:19），而时间只在"去调查地点"时推进、每次 1 小时，第 3 天现在只有 3 个事件，最多走到 11 点。等第 3 天点位/事件补够（约 13 次交互）它才会真的在流程里弹出来；在那之前这条地震只靠结局后日谈里的新闻兑现，不算漏（见 `design-doc.md` 1.6 节）
+- [ ] **第 3 天的 M7.1 走不到**：地震按当天分钟数触发（`timedEvents`，M7.1 配在 20:19），而时间只在"去调查地点"时推进、每次 1 小时，第 3 天现在只有 4 个事件，最多走到 12 点。**M7.1 落在第 3 天的第 13 格**，所以那天得排够 13 格以上的事件它才会真的在流程里弹出来；在那之前这条地震只靠结局后日谈里的新闻兑现，不算漏（见 `design-doc.md` 1.6 / 2.1 节）
+- [ ] **高潮会被提前引爆**：`alkaliWorks` 现在直接写在第 3 天的 `unlockedLocations` 里，前两天就把关键线索收齐的玩家第 1 格就能走进工厂按下抉择，M7.1 根本来不及发生。改成由"地震之后铁门被从里面顶开"那条事件用 `unlocksLocation` 开出来，或给 `e_finale.requires.clues` 加上那条事件产出的线索（两种写法引擎都已支持），见 `design-doc.md` 2.1 节第 3 天那张表
+- [ ] **最后一格的两条路结果相反（待你拍板）**：时间用到 `endMin` 之后，点地图上的加油站直接判 `night_madness`，点顶部菜单"开始剪辑"却一切正常——已实测确认。三个处理方向写在 `design-doc.md` 2.1 节末尾的待定块里，推荐方向 1（把 `pendingDayOver` 的判定挪到 basecamp 分支之后，让回加油站永远是安全动作）
 - [ ] **四个新点位还是空的**：`tavern` / `museum` / `highSchool` 只有坐标和显示名，没有事件挂上去，也不在任何一天的 `unlockedLocations` 里（`hotel`、`theSink` 已有事件；`alkaliWorks` 第 3 天开放，挂着高潮抉择 `e_finale` 和它的兜底事件）
 - [ ] **制碱公司 / 山谷的情节**：White Lake Alkali Company、White Lake Valley 两个已确认设定还没有任何词条和事件承接
 - [ ] **vlog 评论区文案**：`days.json` 每天的 `vlogComments` 现在是占位示例，正式剧本时按天重写（`alien: true` 那条是"置顶不是我们发的"那种诡异评论，别浪费这个位置）

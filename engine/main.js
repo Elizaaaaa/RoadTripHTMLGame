@@ -20,9 +20,11 @@ import * as quakeSys from './quake.js';
 import * as revealSys from './reveal.js';
 import * as paperSys from './paper.js';
 import * as scanSys from './scan.js';
+import * as glitchSys from './glitch.js';
 import {
   createInitialState, loadState, saveState, clearSave,
-  snapshotDay, hasDayCheckpoint, restoreDayCheckpoint
+  snapshotDay, snapshotTime, snapshotChoice,
+  hasDayCheckpoint, restoreDayCheckpoint, restoreCheckpoint, listCheckpoints
 } from './state.js';
 
 let state;
@@ -56,7 +58,7 @@ async function boot() {
   reviewSys.init(content.materials);
   const loaded = loadState();
   state = loaded || createInitialState(content.days['1']);
-  // 新开一局要记第 1 天的存档点；读到的是旧格式存档（还没有 dayCheckpoints）时，
+  // 新开一局要记第 1 天的存档点；读到的是旧格式存档（还没有 checkpoints）时，
   // 退而求其次地把"读档这一刻"记成当天的存档点，好过完全不能用"重新度过今日"。
   if (!hasDayCheckpoint(state, state.day)) snapshotDay(state);
 
@@ -296,7 +298,7 @@ function showSignalToast(text) {
 function onHotspotClick(id) {
   const hotspot = mapSys.getHotspot(id);
   if (!hotspot) return;
-  if (quakeSys.isPlaying() || paperSys.isPlaying()) return; // 演出期间（落灰层/纸条层已经挡住点击）不再接受新的交互，双保险
+  if (quakeSys.isPlaying() || paperSys.isPlaying() || glitchSys.isPlaying()) return; // 演出期间（落灰层/纸条层/信号层已经挡住点击）不再接受新的交互，双保险
   // "被黑暗吞噬"结局（每天都适用）：不在跨过十二点的那次交互里立刻判定——那次
   // 交互本身的内容（事件文本/掷骰）还是正常走完，pendingDayOver 先留着；等玩家
   // 在十二点之后真的再点一次地图（不管点哪，去哪都一样），才在这次交互一开始
@@ -318,6 +320,11 @@ function visitInvestigationSpot(id) {
   if (!dayContent) return;
   const unlocked = (dayContent.unlockedLocations || []).includes(id) || (state.extraUnlockedLocations || []).includes(id);
   if (!unlocked) return; // 双重保险，地图上本应已经不显示这个热点了
+
+  // 整点存档点：记在"这一小时花出去之前、这个地点的事件发生之前"，所以它代表的是
+  // 玩家还站在地图前、这一小时怎么用都还没定的那一刻。走到结局之后，结局窗口的
+  // "从某个时间点继续"列的就是这些点（见 state.js snapshotTime / showEnding）。
+  snapshotTime(state);
 
   state.location = id;
   if (!state.visitedToday.includes(id)) state.visitedToday.push(id);
@@ -759,6 +766,10 @@ function finishDice(event, result) {
 // 窗口关不掉（renderWindow 的 noClose）：这个事件被跳过等于玩家只剩"一无所知"一条路。
 
 function showChoiceEvent(event) {
+  // 抉择存档点：记在 applyOutcomeEffects 之前，所以它代表"选项还没摆出来"的那一刻——
+  // 从结局窗口回到这里时，这条事件的 sanityCost/线索会重新结算一遍，跟第一次走到
+  // 它面前完全一样（见 state.js snapshotChoice / applyCheckpointRewind）。
+  snapshotChoice(state, { eventId: event.id, label: event.rewindLabel || event.title || '重大抉择' });
   applyOutcomeEffects(event);
   recordEventLog(event, event.text);
   openModal('event');
@@ -1164,6 +1175,13 @@ function advanceDay() {
  * 演出：标题逐字上浮 → 正文逐句淡入 → 按钮最后出现（见 reveal.js / ui.css 的 .rv-*）。
  * 这是全篇唯一一处用得起这种慢节奏的地方——普通事件正文照旧整段直出。
  *
+ * 最后一页是"走到结局之后怎么办"的菜单。除了从头再来，任何结局都给两条回头路，
+ * 它们都只是把 state.js 里那条存档点链上的某一个点还原回来（见 applyCheckpointRewind）：
+ *
+ *   从某个时间点继续  按"几月几号几点"列出这一局走过的每一个整点
+ *   回到某个重大抉择  列出这一局做过的每一个抉择（是否摧毁子午线仪 / 是否要帮助婴儿），
+ *                     回去的是选项还没摆出来的那一刻，那条抉择事件会重新播一遍
+ *
  * @param {object} [opts]
  * @param {boolean} [opts.intro] 传 false 表示"直接把窗口摆出来"，跳过 endings.json 里
  *        配的 quake 演出。读档进来时用（见 boot），免得每次刷新页面都重震一遍。
@@ -1179,6 +1197,11 @@ function showEnding(id, opts = {}) {
   // 重开，更合理的是直接问要不要重新度过今天（复用"重新度过今日"的存档点机制，见
   // state.js snapshotDay/restoreDayCheckpoint），"重新开始"整个旅程只作为次要选项保留。
   const isNightMadness = id === 'night_madness';
+
+  // 结局窗口摆出来之后 state 不会再变，两份清单在这里取一次就够，翻页/来回进出子窗口都复用。
+  const timePoints = listCheckpoints(state, ['day', 'time']);
+  const choicePoints = listCheckpoints(state, ['choice']);
+  const hasRewind = isNightMadness || timePoints.length > 0 || choicePoints.length > 0;
 
   const pages = [
     ...splitSegments(ending.text).map(text => ({ text, epilogue: false })),
@@ -1203,7 +1226,9 @@ function showEnding(id, opts = {}) {
       <div class="rv-block" style="--rv-base:${btnBase.toFixed(2)}s">
         ${!isLast ? '<button class="btn" id="btn-ending-continue">继续</button>' : ''}
         ${isLast && isNightMadness ? `<button class="btn" id="btn-redo-day">重新度过今日（第 ${state.day} 天）</button>` : ''}
-        ${isLast ? `<button class="btn ${isNightMadness ? 'btn-gray' : ''}" id="btn-restart" ${isNightMadness ? 'style="margin-top:8px;"' : ''}>重新开始${isNightMadness ? '整个旅程' : ''}</button>` : ''}
+        ${isLast && choicePoints.length ? `<button class="btn" id="btn-rewind-choice" ${isNightMadness ? 'style="margin-top:8px;"' : ''}>回到某个重大抉择</button>` : ''}
+        ${isLast && timePoints.length ? `<button class="btn" id="btn-rewind-time" ${isNightMadness || choicePoints.length ? 'style="margin-top:8px;"' : ''}>从某个时间点继续</button>` : ''}
+        ${isLast ? `<button class="btn ${hasRewind ? 'btn-gray' : ''}" id="btn-restart" ${hasRewind ? 'style="margin-top:8px;"' : ''}>重新开始${hasRewind ? '整个旅程' : ''}</button>` : ''}
       </div>
     `);
     bindKeywordClicks(body);
@@ -1218,6 +1243,15 @@ function showEnding(id, opts = {}) {
 
     if (isNightMadness) {
       document.getElementById('btn-redo-day').addEventListener('click', () => applyTimeRewind(state.day));
+    }
+    // 两个回退清单开在同一个窗口里，"返回"回到结局的最后一页（也就是重画这一屏）。
+    if (choicePoints.length) {
+      document.getElementById('btn-rewind-choice')
+        .addEventListener('click', () => openEndingRewind({ kind: 'choice', list: choicePoints, back: showPage }));
+    }
+    if (timePoints.length) {
+      document.getElementById('btn-rewind-time')
+        .addEventListener('click', () => openEndingRewind({ kind: 'time', list: timePoints, back: showPage }));
     }
     document.getElementById('btn-restart').addEventListener('click', () => {
       quakeSys.cancel(); // 保险：演出还没收尾就重开时，把抖动/落灰一并复位
@@ -1241,6 +1275,68 @@ function showEnding(id, opts = {}) {
   // 现实世界都一定会记录到那两次地震，结局文本里那句新闻是固定收尾。
   if (ending.quake && opts.intro !== false) quakeSys.play(ending.quake).then(start);
   else start();
+}
+
+// ---------- 结局之后的回退清单 ----------
+//
+// "从某个时间点继续"和"回到某个重大抉择"是同一件事的两种排法——都是把 state.js 那条
+// 存档点链摆成一份可点的清单，点下去就把整局状态还原到那一刻（applyCheckpointRewind）。
+// 所以它们共用这一个窗口，只在排版和小字说明上分岔：时间点按天分组、条目是"几点"，
+// 抉择是平铺一列、条目是抉择本身的名字（days.json 里的 rewindLabel）。
+
+/** 存档点条目底下那行小字：还原回去之后玩家手里握着什么。 */
+function checkpointStateHint(cp) {
+  const snap = cp.snapshot || {};
+  return `理智 ${snap.sanity} · 已收集 ${(snap.collectedClues || []).length} 条线索`;
+}
+
+function checkpointDateLabel(cp) {
+  return timeSys.formatDayDate(content.days[String(cp.day)], cp.day);
+}
+
+/**
+ * @param {object} args
+ * @param {'time'|'choice'} args.kind 这份清单排成哪一种
+ * @param {object[]} args.list 要列出来的存档点（已按时间排好序，见 state.js listCheckpoints）
+ * @param {Function} args.back "返回"按下去做什么——结局窗口传的是重画最后一页
+ */
+function openEndingRewind({ kind, list, back }) {
+  const isChoice = kind === 'choice';
+
+  // 时间点按天分组：链本来就是按时间排的，所以相邻同一天的挨在一起，顺着扫一遍就能分组
+  const groups = [];
+  for (const cp of list) {
+    const last = groups[groups.length - 1];
+    if (last && last.day === cp.day) last.items.push(cp);
+    else groups.push({ day: cp.day, items: [cp] });
+  }
+
+  const rowHTML = cp => `
+    <button class="btn btn-option choice-btn" data-cp="${cp.id}">
+      <span class="choice-label">${isChoice ? cp.label : `${timeSys.formatMinutes(cp.minutes)}${cp.kind === 'day' ? ' · 出发' : ''}`}</span>
+      <span class="choice-hint">${isChoice
+        ? `${timeStampLabel(cp.day, cp.minutes)} · ${checkpointStateHint(cp)}`
+        : checkpointStateHint(cp)}</span>
+    </button>`;
+
+  const body = renderWindow(isChoice ? '旅程 · 回到某个重大抉择' : '旅程 · 从某个时间点继续', `
+    <p class="hint">${isChoice
+      ? '回到那个抉择摆在眼前的一刻重新选。那之后发生的一切——理智、线索、这次走到的结局——都会一并还原。'
+      : '回到那一刻重新走一遍。那之后发生的一切——理智、线索、发布记录、这次走到的结局——都会一并还原。'}</p>
+    ${isChoice
+      ? `<div class="choice-list">${list.map(rowHTML).join('')}</div>`
+      : groups.map(g => `
+          <div class="rewind-day">${checkpointDateLabel({ day: g.day })}</div>
+          <div class="choice-list">${g.items.map(rowHTML).join('')}</div>
+        `).join('')}
+    <button class="btn btn-gray" id="btn-rewind-back" style="margin-top:12px;">返回</button>
+  `, { noClose: true }); // 关不掉：这一屏是结局窗口的下一层，出口只有"返回"和挑一个点，
+                         // 免得红灯一点把整个结局窗口关掉、玩家对着地图不知道该干什么
+
+  body.querySelectorAll('.choice-btn').forEach(btn => {
+    btn.addEventListener('click', () => applyCheckpointRewind(btn.dataset.cp));
+  });
+  document.getElementById('btn-rewind-back').addEventListener('click', back);
 }
 
 // ---------- 剪辑编辑器共用素材展示 helper ----------
@@ -1603,10 +1699,11 @@ function openTracker() {
   document.getElementById('btn-close-plain').addEventListener('click', closeModal);
 }
 
-// ---------- 时间线：重新度过今日 / 回到上一天 ----------
+// ---------- 时间线：重新度过今日 / 回到上一天 / 回到任意存档点 ----------
 //
-// 依赖 state.js 的 dayCheckpoints：新开一局记第 1 天、每次 advanceDay() 都会记一次
-// "当天开始时"的快照。这里只是把恢复动作接到 UI 上，不做业务判断。
+// 依赖 state.js 的 checkpoints：新开一局记第 1 天、每次 advanceDay() 记一次"当天开始"、
+// 每次去调查地点记一次整点、每个重大抉择摆出选项前记一次。这里只是把恢复动作接到 UI 上，
+// 不做业务判断。地图上的"时间线"按钮只用得到前两种，结局窗口的两份清单用的是全部。
 
 function openTimeControl() {
   const canRedo = hasDayCheckpoint(state, state.day);
@@ -1631,11 +1728,68 @@ function applyTimeRewind(targetDay) {
     showToast('没有找到可回退的存档点');
     return;
   }
-  state = restored;
-  pendingDayOver = false;     // 回退掉了触发这个标记的那部分进程，避免残留一次假的"超时"判定
-  publishEditorTimeline = []; // 剪辑编辑页的临时拖拽状态本来就不写进存档，回退后清空更保险
-  closeModal();
-  refreshAll();
+  applyRestoredState(restored);
+}
+
+/**
+ * 结局窗口两份清单的落点：按 id 还原任意一个存档点。
+ * 抉择存档点还原之后要多做一步——把那条抉择事件重新播一遍，见下面的注释。
+ */
+function applyCheckpointRewind(id) {
+  const cp = (state.checkpoints || []).find(c => c.id === id);
+  const restored = restoreCheckpoint(state, id);
+  if (!cp || !restored) {
+    showToast('没有找到可回退的存档点');
+    return;
+  }
+  // 抉择存档点记的是"选项还没摆出来"的那一刻，只还原状态的话玩家会站在地图前，
+  // 选项不会自己再出现——高潮抉择的第二问（e_finale_baby）甚至根本没挂在任何地点上，
+  // 那就再也回不去了。所以这里把那条事件也一起接在信号断掉的那一刻重新播：
+  // 信号回来时选项已经摆好了，跟第一次走到它面前一样。
+  const event = cp.kind === 'choice'
+    ? ((content.days[String(cp.day)] || {}).events || []).find(e => e.id === cp.eventId)
+    : null;
+
+  applyRestoredState(restored, {
+    after: () => {
+      if (cp.kind !== 'choice') return;
+      if (event) showChoiceEvent(event);
+      else showToast('这个抉择在当前剧本里已经找不到了');
+    }
+  });
+}
+
+/**
+ * 把一份还原出来的状态接管成当前局面：演出层收干净 → 放监控信号异常的转场 → 在画面
+ * 断掉的那一刻换 state、清掉不进存档的临时状态、关窗刷新（见 engine/glitch.js 的
+ * onCut：换挡这一下藏在雪花后面，信号回来时已经是另一个时刻了）。
+ * 回退可能是从结局窗口发起的，所以地震/纸条/扫描这些演出都得在这里先收尾。
+ *
+ * @param {object} [opts]
+ * @param {Function} [opts.after] 换完状态、界面刷新之后还要做的事（回到抉择时把那条事件重播一遍）
+ */
+function applyRestoredState(restored, opts = {}) {
+  quakeSys.cancel();
+  paperSys.cancel();
+  stopScanLoop();             // 新状态的理智值决定要不要重新开，交给下面 refreshAll 里的 syncScanLoop
+
+  glitchSys.play({
+    from: timeStampLabel(state.day, state.minutes),
+    to: timeStampLabel(restored.day, restored.minutes),
+    onCut: () => {
+      state = restored;
+      pendingDayOver = false;     // 回退掉了触发这个标记的那部分进程，避免残留一次假的"超时"判定
+      publishEditorTimeline = []; // 剪辑编辑页的临时拖拽状态本来就不写进存档，回退后清空更保险
+      closeModal();
+      refreshAll();
+      if (opts.after) opts.after();
+    }
+  });
+}
+
+/** "7月4日 10:00"：给信号异常演出的时间码用，也是回退清单上那个"几月几号几点"的同一份写法。 */
+function timeStampLabel(day, minutes) {
+  return `${timeSys.formatDayDate(content.days[String(day)], day)} ${timeSys.formatMinutes(minutes)}`;
 }
 
 // ---------- 事件绑定 ----------

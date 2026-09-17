@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<!--
+  glitch-preview.html —— 监控信号异常演出的预览工具。
+  调 engine/glitch.js / ui.css 里「监控信号异常」那一节时不用真的玩到结局再回退一次，
+  开这个页面按按钮就能看：能改整段时长、改时间码的起止时刻，也能看"结局窗口 + 信号断掉"
+  的层次——游戏里这段演出就是盖在结局窗口之上、把换状态那一下遮住的。
+
+  「模拟一次回退」那颗按钮会在画面断掉的那一刻真的把底下的假界面换掉（状态栏的日期/
+  时间跳到新的时刻、弹窗关掉），演的就是 main.js applyRestoredState() 的时序。
+
+  要用本地静态服务器打开（跟游戏本体一样，file:// 下 ES module 会被拦），在项目根目录
+  执行 npx serve . 或 python -m http.server，再访问 /tools/glitch-preview.html。
+-->
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>监控信号异常预览</title>
+<link rel="stylesheet" href="../engine/ui.css">
+<style>
+  #panel {
+    position: fixed;
+    top: 12px;
+    left: 12px;
+    z-index: 500;
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    flex-wrap: wrap;
+    max-width: 92vw;
+    padding: 10px 12px;
+    background: rgba(28, 28, 30, 0.92);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 10px;
+    font-size: 13px;
+  }
+  #panel input { font: inherit; color: inherit; background: #1c1c1c; border: 1px solid #3a3a3a; border-radius: 6px; padding: 3px 6px; }
+  #panel input[type="number"] { width: 72px; }
+  #panel input[type="text"] { width: 120px; }
+  #panel .sep { width: 1px; height: 20px; background: #3a3a3a; }
+  #fake-map { flex: 1; background: #12110f url("../assets/maps/white-lake-map-now.png") center/cover no-repeat; }
+</style>
+</head>
+<body>
+  <div id="app">
+    <header id="status-bar">
+      <div class="menu-left"><span class="menu-brand">●</span><span id="day-display">第 3 天</span></div>
+      <div class="menu-right">
+        <span class="menu-item">理智：濒临崩溃</span>
+        <span id="clock-display" class="menu-item">20:00</span>
+      </div>
+    </header>
+    <main id="fake-map"></main>
+  </div>
+
+  <div id="panel">
+    <label>时长 <input type="number" id="in-ms" value="1500" min="300" max="6000" step="100"> ms</label>
+    <label>从 <input type="text" id="in-from" value="7月5日 20:00"></label>
+    <label>到 <input type="text" id="in-to" value="7月4日 10:00"></label>
+    <button class="btn" id="btn-play">播一次</button>
+    <span class="sep"></span>
+    <button class="btn" id="btn-rewind">模拟一次回退（带界面换挡）</button>
+  </div>
+
+  <div id="modal-overlay" class="modal-overlay hidden"><div id="modal-box" class="modal-box"></div></div>
+
+  <div id="glitch-overlay" class="hidden" aria-hidden="true">
+    <div class="gl-snow"></div>
+    <div class="gl-scan"></div>
+    <div class="gl-roll"></div>
+    <div class="gl-tear gl-tear-1"></div>
+    <div class="gl-tear gl-tear-2"></div>
+    <div class="gl-tear gl-tear-3"></div>
+    <div class="gl-vignette"></div>
+    <div class="gl-osd">
+      <span class="gl-osd-rec">● REC</span>
+      <span class="gl-osd-cam">CAM 01</span>
+      <span class="gl-osd-stamp"></span>
+      <span class="gl-osd-note"></span>
+    </div>
+  </div>
+
+<script type="module">
+import * as glitchSys from '../engine/glitch.js';
+
+const $ = id => document.getElementById(id);
+const cfg = () => ({
+  ms: Number($('in-ms').value) || 1500,
+  from: $('in-from').value,
+  to: $('in-to').value
+});
+
+$('btn-play').addEventListener('click', () => glitchSys.play(cfg()));
+
+// 模拟一次真正的回退：先摆一个假的结局窗口，再在信号断掉那一刻把界面换成新的时刻。
+// 时序跟 main.js 的 applyRestoredState() 一模一样。
+$('btn-rewind').addEventListener('click', () => {
+  $('modal-box').innerHTML = `
+    <div class="mac-titlebar">
+      <div class="mac-traffic">
+        <span class="mac-dot mac-dot-red mac-dot-off"></span>
+        <span class="mac-dot mac-dot-yellow"></span>
+        <span class="mac-dot mac-dot-green"></span>
+      </div>
+      <div class="mac-title">旅程 · 从某个时间点继续</div>
+    </div>
+    <div class="mac-body">
+      <p class="hint">回到那一刻重新走一遍。</p>
+      <div class="rewind-day">7月4日</div>
+      <div class="choice-list">
+        <button class="btn btn-option choice-btn"><span class="choice-label">10:00</span>
+        <span class="choice-hint">理智 74 · 已收集 3 条线索</span></button>
+      </div>
+    </div>`;
+  $('modal-overlay').classList.remove('hidden');
+
+  const to = $('in-to').value;
+  glitchSys.play({
+    ...cfg(),
+    onCut: () => {
+      // 换挡：这一下藏在雪花后面，玩家看不到界面"当场变样"
+      $('modal-overlay').classList.add('hidden');
+      $('modal-box').innerHTML = '';
+      const m = /^(.*?)\s+(\d{1,2}:\d{2})$/.exec(to);
+      $('day-display').textContent = m ? m[1] : to;
+      $('clock-display').textContent = m ? m[2] : '--:--';
+    }
+  });
+});
+</script>
+</body>
+</html>

@@ -15,6 +15,8 @@
 
 回电脑后你只需要说"看一下草稿"或者指定"看一下 day2 草稿"，我会自己 `git pull` 拉取你手机上的 commit，然后读文件、处理 `[PENDING]` 段落。
 
+排完格位（在 `tools/slot-planner.html` 里点过保存）之后，说一声"看一下格位表"，我会读 `content/drafts/slot-plan.json`，按里面的安排去改 `content/days.json`。这个文件是工具写的，不用手改。
+
 ## 五个文件分别放什么
 
 | 文件 | 放什么 | 最终会配置进 |
@@ -22,6 +24,7 @@
 | `day1.md` / `day2.md` / `day3.md` | 当天具体发生的事、地点描述、对白、事件文本 | `content/days.json` 对应天数的 `events` |
 | `outline.md` | 跨天的主线走向、伏笔呼应、结局方向、真相设定这类不属于单一天的整体设定 | `design-doc.md` + 跨天 mainline 事件安排 |
 | `items.md` | 新的线索/调查素材点子——是什么、在哪找到的、大概多重要 | `content/materials.json`（对应事件里的 `clue` 字段） |
+| `slot-plan.json` | **不用手写**——由 `tools/slot-planner.html` 保存：三天每一格排哪条事件、新加了哪些还没写正文的关键事件 | `content/days.json` 的 `events`（排几条＝这一天有多长）|
 
 写的时候不用纠结该放哪个文件，写错了我处理的时候会挪过去，不影响。
 

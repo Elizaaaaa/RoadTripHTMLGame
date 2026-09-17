@@ -82,6 +82,25 @@
     <div class="quake-dust"></div>
   </div>
 
+  <!-- 监控信号异常演出：时间线回退时的转场（engine/glitch.js）。平时 hidden；播放时盖住
+       所有东西，把"换状态"那一下藏在雪花后面，时间码重新锁上时显示回到了哪一刻。
+       跟落灰层一样零美术素材，全是 CSS 渐变，见 ui.css「监控信号异常」一节。 -->
+  <div id="glitch-overlay" class="hidden" aria-hidden="true">
+    <div class="gl-snow"></div>
+    <div class="gl-scan"></div>
+    <div class="gl-roll"></div>
+    <div class="gl-tear gl-tear-1"></div>
+    <div class="gl-tear gl-tear-2"></div>
+    <div class="gl-tear gl-tear-3"></div>
+    <div class="gl-vignette"></div>
+    <div class="gl-osd">
+      <span class="gl-osd-rec">● REC</span>
+      <span class="gl-osd-cam">CAM 01</span>
+      <span class="gl-osd-stamp"></span>
+      <span class="gl-osd-note"></span>
+    </div>
+  </div>
+
   <div id="toast" class="hidden"></div>
 
   <!-- 手机竖屏时盖住全部内容，提示转横屏；纯 CSS 媒体查询控制显隐，不依赖 JS，也不挡桌面端窄窗口 -->

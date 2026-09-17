@@ -5,7 +5,7 @@ import { createFinale } from './ending.js';
 
 // 版本号在每次改动后递增：旧存档会挂在旧 key 下面，读不到就自动当新档处理，
 // 不需要玩家手动清 localStorage 就能获得一次"从头开始"的测试。
-const SAVE_KEY = 'roadtrip1_save_v35';
+const SAVE_KEY = 'roadtrip1_save_v36';
 
 /**
  * 新开一局的初始状态。
@@ -49,41 +49,102 @@ export function createInitialState(day1Content) {
                              // 的五结局真值表。ending 一旦写上，游戏当场结束
     ending: null,            // 游戏结束后写入结局 id，写入后视为游戏已结束
 
-    dayCheckpoints: {}      // { 天数: 当天开始时的状态快照 }，供"重新度过今日"/"回到上一天"使用，见下方三个函数
+    checkpoints: []         // 时间线存档点，按记录先后排成一条链，见下方 snapshot* / restore* 一组函数
   };
 }
 
+// ---------- 存档点（时间线回退） ----------
+//
+// 一条按时间顺序排列的链，每个元素是一份"那一刻的完整状态快照"。三种来源：
+//
+//   kind:'day'    每天出发那一刻（advanceDay / 新开一局），供"重新度过今日"/"回到上一天"
+//   kind:'time'   每次去调查地点、时间往前走之前的那个整点，供结局窗口的"从某个时间点继续"
+//   kind:'choice' 重大抉择的选项摆出来之前，供结局窗口的"回到某个重大抉择"
+//
+// 'day' 和 'time' 用同一个 id（`天@分钟`）：每天出发那一刻本来就是那天第一个整点，
+// 两者指的是同一个瞬间，同 id 只留先记下的那一个（也就是 'day' 那条），不重复存。
+
+/** 一局里最多留多少个存档点。三天满打满算也就 50 个上下（每天每整点一个 + 每天开头 +
+ *  两个抉择），这个上限只是内容量变大之后防止存档撑爆 localStorage 的保险丝：满了先丢
+ *  最早的整点存档点，'day' 和 'choice' 那两类一个都不丢。 */
+const MAX_CHECKPOINTS = 80;
+
+const timeCheckpointId = state => `${state.day}@${state.minutes}`;
+
 /**
- * 记录"当天开始时"的一份状态快照，存进 state.dayCheckpoints[state.day]。
- * 调用时机：新开一局记第 1 天、每次 advanceDay() 推进到新的一天时都要记一次。
- * 快照本身不包含 dayCheckpoints 字段（避免自我嵌套、存档体积滚雪球）。
+ * 记一份"此刻"的快照。快照本身不含 checkpoints 字段（避免自我嵌套、存档体积滚雪球）。
+ * 已经走到结局的局不再往里记——那种快照一还原就又是结局，没有意义。
  */
+function recordCheckpoint(state, rec) {
+  if (state.ending) return;
+  state.checkpoints ||= [];
+  if (state.checkpoints.some(c => c.id === rec.id)) return;
+  const { checkpoints, ...rest } = state;
+  state.checkpoints.push({ ...rec, snapshot: JSON.parse(JSON.stringify(rest)) });
+  if (state.checkpoints.length > MAX_CHECKPOINTS) {
+    const i = state.checkpoints.findIndex(c => c.kind === 'time');
+    if (i >= 0) state.checkpoints.splice(i, 1);
+  }
+}
+
+/** 当天出发那一刻的存档点。调用时机：新开一局记第 1 天、每次 advanceDay() 推进到新的一天。 */
 export function snapshotDay(state) {
-  const { dayCheckpoints, ...rest } = state;
-  const snapshot = JSON.parse(JSON.stringify(rest));
-  state.dayCheckpoints = { ...(dayCheckpoints || {}), [state.day]: snapshot };
+  recordCheckpoint(state, { id: timeCheckpointId(state), kind: 'day', day: state.day, minutes: state.minutes });
+}
+
+/** 整点存档点。调用时机：每次去调查地点、时间往前推进之前（见 main.js visitInvestigationSpot）。 */
+export function snapshotTime(state) {
+  recordCheckpoint(state, { id: timeCheckpointId(state), kind: 'time', day: state.day, minutes: state.minutes });
+}
+
+/**
+ * 重大抉择存档点。调用时机：抉择事件正文开播之前（见 main.js showChoiceEvent）。
+ * eventId 记下来是为了还原之后能把那条抉择事件重新播一遍——光把状态倒回去，
+ * 玩家会站在原地，选项不会自己再摆出来。
+ */
+export function snapshotChoice(state, { eventId, label }) {
+  recordCheckpoint(state, {
+    id: `choice:${eventId}`, kind: 'choice', day: state.day, minutes: state.minutes, eventId, label
+  });
+}
+
+/** 按种类取存档点列表（含 snapshot，UI 要读里面的理智/线索数做小字说明）。 */
+export function listCheckpoints(state, kinds) {
+  return (state.checkpoints || []).filter(c => kinds.includes(c.kind));
 }
 
 export function hasDayCheckpoint(state, day) {
-  return !!(state.dayCheckpoints && state.dayCheckpoints[day]);
+  return (state.checkpoints || []).some(c => c.kind === 'day' && c.day === day);
+}
+
+/**
+ * 还原到链上第 idx 个存档点。
+ * 它之后的存档点会被一并丢弃：一旦从某一刻重新出发，之后的进程就此改写，旧快照
+ * （哪怕玩家之前已经打到过第 3 天）不再代表这条时间线，留着只会误导回退操作。
+ * 被还原的那一条自己留着，所以同一个点可以反复回。
+ */
+function restoreAt(state, idx) {
+  const list = state.checkpoints || [];
+  const restored = JSON.parse(JSON.stringify(list[idx].snapshot));
+  restored.checkpoints = JSON.parse(JSON.stringify(list.slice(0, idx + 1)));
+  restored.ending = null; // 保险：存档点都是结局之前记的，这里只是明确"回退之后这一局没有结局"
+  return restored;
 }
 
 /**
  * 恢复到某天开始时的快照——"重新度过今日"传当前天数，"回到上一天"传 day-1。
- * 目标天之后的快照会被一并丢弃：一旦从某天重新出发，之后的进程就此改写，
- * 旧快照（哪怕玩家之前已经打到过第 3 天）不再代表这条时间线，留着只会误导回退操作。
  * @returns {object|null} 恢复后可直接替换 main.js 里 state 变量的新状态；
  *          没有对应快照时返回 null（调用方应保持现状、提示玩家没有可回退的存档点）。
  */
 export function restoreDayCheckpoint(state, day) {
-  const cp = state.dayCheckpoints && state.dayCheckpoints[day];
-  if (!cp) return null;
-  const restored = JSON.parse(JSON.stringify(cp));
-  restored.dayCheckpoints = {};
-  for (const [d, snap] of Object.entries(state.dayCheckpoints)) {
-    if (Number(d) <= day) restored.dayCheckpoints[d] = snap;
-  }
-  return restored;
+  const idx = (state.checkpoints || []).findIndex(c => c.kind === 'day' && c.day === day);
+  return idx < 0 ? null : restoreAt(state, idx);
+}
+
+/** 按 id 恢复到任意一个存档点，供结局窗口的两个回退入口使用。 */
+export function restoreCheckpoint(state, id) {
+  const idx = (state.checkpoints || []).findIndex(c => c.id === id);
+  return idx < 0 ? null : restoreAt(state, idx);
 }
 
 export function loadState() {

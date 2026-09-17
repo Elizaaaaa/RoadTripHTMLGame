@@ -322,6 +322,16 @@ button:disabled:hover, .btn:disabled:hover { background: rgba(255, 255, 255, 0.0
 
 .choice-btn:hover .choice-hint { color: #b8b8b8; }
 
+/* --- 结局之后的回退清单（main.js openEndingRewind）：条目直接复用上面那套 .choice-btn，
+   只多一个按天分组的小标题（"7月3日"）。 --- */
+.rewind-day {
+  margin-top: 16px;
+  font-size: 0.9em;
+  letter-spacing: 0.1em;
+  color: var(--accent-2);
+}
+.rewind-day + .choice-list { margin-top: 6px; }
+
 /* --- 弹窗：仿 macOS 悬浮窗口（毛玻璃 + 红黄绿交通灯），配合状态栏营造"在自己电脑桌面上
    查看结果"的感觉。窗口本身由 main.js 的 renderWindow() 统一拼出 .mac-titlebar/.mac-body。 --- */
 .modal-overlay {
@@ -1522,4 +1532,340 @@ body.quake-blocking #quake-overlay { pointer-events: auto; }
   font-variant-numeric: tabular-nums; /* 等宽数字，倒计时跳动时不左右抖 */
   color: rgba(255, 205, 120, 0.85);
   opacity: 0.9;
+}
+
+/* ===================================================================
+   监控信号异常（engine/glitch.js）
+   时间线回退时的转场：画面断掉 → 雪花 / 撕裂带 / 时间码乱跳 → 重新锁上一个新的时刻。
+
+   它同时是个功能件：最不透明的那一段（glEnvelope 的 14%~55%）正好把"换状态"那一下
+   遮住——地图重画、时钟跳表、弹窗关掉都发生在雪花后面。glitch.js 的 CUT_RATIO 就压在
+   这一段中间，改下面的关键帧记得同步那个数。
+
+   零美术素材，整段只动 transform / opacity / background-position：
+   - 雪花 = 三层互质间距的渐变点阵，各自按 steps() 跳到不同位置，叠起来眼睛就读成噪点了
+     （跟 quake.js 落灰同一个路子，见上面「地震演出」那一节的注释）；
+   - 撕裂带 = 三条横向亮带按 steps() 左右硬跳，两端各带一点青/红，假装色彩分离；
+   - 滚动同步带 = 一条宽软亮带从下往上滚，电视失去垂直同步时的那根杠。
+   全程不碰 filter / mix-blend-mode：前者会让整棵子树逐帧重栅格化（ui.css 理智闪烁那一
+   节记着的教训），后者要拿整屏背景去混合，两样都不值当。
+   =================================================================== */
+
+#glitch-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 300; /* 盖过落灰(250)，压在竖屏提示(9999)之下 */
+  pointer-events: none;
+  overflow: hidden;
+  opacity: 0;
+  background: #05070a; /* 信号断掉时屏幕本身的黑，偏冷一点点 */
+}
+
+/* 演出期间这一层接管点击：不然玩家能在断信号的中间又点一次地图，两条流程叠在一起 */
+body.glitching #glitch-overlay { pointer-events: auto; }
+
+/* #app 是 100vh，演出期间又被 transform 顶大了一点（见下面的 glWorldRoll），
+   不锁住的话整页会多出零点几个像素的可滚动区、右边和底下闪出两条滚动条。
+   地震那段抖动是同一个道理（quakeShakeWorld 也带 scale），一起锁掉。 */
+body.glitching,
+body.quaking { overflow: hidden; }
+
+#glitch-overlay.gl-on {
+  animation: glEnvelope var(--gl-ms, 1500ms) linear both;
+}
+
+/* 整段的明灭包络：先断续闪两下 → 彻底断掉（换状态就在这一段里）→ 重新锁上时又跳两下 → 散掉 */
+@keyframes glEnvelope {
+  0%   { opacity: 0; }
+  5%   { opacity: 0.9; }
+  9%   { opacity: 0.3; }
+  14%  { opacity: 1; }
+  55%  { opacity: 1; }
+  63%  { opacity: 0.66; }
+  69%  { opacity: 0.94; }
+  80%  { opacity: 0.4; }
+  86%  { opacity: 0.6; }
+  100% { opacity: 0; }
+}
+
+/* 雪花：三层点阵（本体 + ::before + ::after），间距 3/7/11 与 5/13 互质，
+   每层按 steps() 跳到一组不重复的偏移上，周期也互质（0.19/0.23/0.31s），
+   所以任意一帧上三层的相对位置都不一样，看起来就是在不停重抽的噪点。
+   inset 给负值：跳位时不会把没铺到的边缘露出来。 */
+.gl-snow {
+  position: absolute;
+  inset: -12px;
+  opacity: 0.55;
+  background-image:
+    radial-gradient(circle, rgba(255, 255, 255, 0.9) 0.6px, transparent 1.7px),
+    radial-gradient(circle, rgba(190, 205, 215, 0.5) 0.7px, transparent 2px),
+    /* 横向拖影：模拟信号的噪点是顺着扫描线抹开的，不是一颗颗独立的点 */
+    repeating-linear-gradient(90deg,
+      rgba(255, 255, 255, 0.1) 0 2px, transparent 2px 6px,
+      rgba(200, 215, 225, 0.06) 6px 7px, transparent 7px 15px);
+  background-size: 5px 4px, 11px 13px, 47px 100%;
+  animation: glSnowA 0.19s steps(1, end) infinite;
+  will-change: transform;
+}
+
+.gl-snow::before,
+.gl-snow::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+}
+
+.gl-snow::before {
+  background-image: radial-gradient(circle, rgba(255, 255, 255, 0.6) 0.6px, transparent 1.8px);
+  background-size: 7px 5px;
+  animation: glSnowB 0.23s steps(1, end) infinite;
+}
+
+.gl-snow::after {
+  background-image: radial-gradient(circle, rgba(120, 150, 170, 0.5) 0.9px, transparent 2.6px);
+  background-size: 17px 19px;
+  animation: glSnowC 0.31s steps(1, end) infinite;
+}
+
+/* 每一跳除了挪位置还顺手改一点缩放：点阵是画在图层上、再整层变换的，所以缩放会让
+   这一帧的网格间距跟上一帧对不上——规则的格子就此被打散，不然静帧上一眼能看出是纱窗。 */
+@keyframes glSnowA {
+  0%   { transform: translate3d(0, 0, 0) scale(1.02); }
+  25%  { transform: translate3d(-2px, 3px, 0) scale(1.06); }
+  50%  { transform: translate3d(3px, -2px, 0) scale(1.03); }
+  75%  { transform: translate3d(-3px, -3px, 0) scale(1.08); }
+}
+
+@keyframes glSnowB {
+  0%   { transform: translate3d(2px, -3px, 0) scale(1.05); }
+  33%  { transform: translate3d(-3px, 2px, 0) scale(1.01); }
+  66%  { transform: translate3d(1px, 3px, 0) scale(1.09); }
+}
+
+@keyframes glSnowC {
+  0%   { transform: translate3d(-4px, 2px, 0) scale(1.07); }
+  40%  { transform: translate3d(4px, -4px, 0) scale(1.02); }
+  80%  { transform: translate3d(-1px, -2px, 0) scale(1.04); }
+}
+
+/* 扫描线：1px 亮 / 2px 暗的横纹，缓慢下移。周期 3px，位移正好一个周期，接得上不跳。 */
+.gl-scan {
+  position: absolute;
+  inset: 0;
+  opacity: 0.75;
+  background: repeating-linear-gradient(
+    to bottom,
+    rgba(0, 0, 0, 0.55) 0 1px,
+    rgba(255, 255, 255, 0.05) 1px 2px,
+    rgba(0, 0, 0, 0.2) 2px 3px
+  );
+  animation: glScanDrift 1.6s linear infinite;
+  will-change: transform;
+}
+
+@keyframes glScanDrift {
+  from { transform: translate3d(0, 0, 0); }
+  to   { transform: translate3d(0, 3px, 0); }
+}
+
+/* 滚动同步带：失去垂直同步时从下往上爬的那根宽亮杠，中间压一条硬边亮线 */
+.gl-roll {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 30%;
+  background:
+    linear-gradient(to bottom,
+      transparent 0%,
+      rgba(255, 255, 255, 0.07) 32%,
+      rgba(255, 255, 255, 0.16) 48%,
+      rgba(255, 255, 255, 0.2) 50%,
+      rgba(255, 255, 255, 0.1) 62%,
+      transparent 100%);
+  animation: glRoll 1.05s linear infinite;
+  will-change: transform;
+}
+
+@keyframes glRoll {
+  from { transform: translate3d(0, 130%, 0); }
+  to   { transform: translate3d(0, -130%, 0); }
+}
+
+/* 撕裂带：三条横向亮带按 steps() 左右硬跳，左右两端各带一点青/红假装色彩分离。
+   左右各溢出 14%，跳位时不会在屏幕边上露出带子的头尾。 */
+.gl-tear {
+  position: absolute;
+  left: -14%;
+  right: -14%;
+  will-change: transform;
+}
+
+.gl-tear-1 {
+  top: 21%;
+  height: 3.2%;
+  background: linear-gradient(90deg,
+    transparent 0%, rgba(150, 225, 255, 0.3) 14%, rgba(255, 255, 255, 0.5) 46%,
+    rgba(255, 130, 130, 0.28) 72%, transparent 100%);
+  animation: glTearA 0.37s steps(1, end) infinite;
+}
+
+.gl-tear-2 {
+  top: 52%;
+  height: 5.5%;
+  background: linear-gradient(90deg,
+    transparent 0%, rgba(255, 140, 140, 0.24) 10%, rgba(255, 255, 255, 0.38) 52%,
+    rgba(150, 225, 255, 0.26) 84%, transparent 100%);
+  animation: glTearB 0.53s steps(1, end) infinite;
+}
+
+.gl-tear-3 {
+  top: 74%;
+  height: 2.2%;
+  background: linear-gradient(90deg,
+    transparent 0%, rgba(255, 255, 255, 0.42) 38%, rgba(150, 225, 255, 0.22) 66%, transparent 100%);
+  animation: glTearC 0.29s steps(1, end) infinite;
+}
+
+@keyframes glTearA {
+  0%   { transform: translate3d(-7%, 0, 0); opacity: 0.9; }
+  30%  { transform: translate3d(9%, 0, 0);  opacity: 0.25; }
+  55%  { transform: translate3d(-2%, 0, 0); opacity: 1; }
+  80%  { transform: translate3d(5%, 0, 0);  opacity: 0.5; }
+}
+
+@keyframes glTearB {
+  0%   { transform: translate3d(6%, 0, 0);  opacity: 0.35; }
+  28%  { transform: translate3d(-9%, 0, 0); opacity: 0.85; }
+  61%  { transform: translate3d(3%, 0, 0);  opacity: 0.2; }
+  84%  { transform: translate3d(-4%, 0, 0); opacity: 0.7; }
+}
+
+@keyframes glTearC {
+  0%   { transform: translate3d(-3%, 0, 0); opacity: 0.6; }
+  42%  { transform: translate3d(8%, 0, 0);  opacity: 0.15; }
+  71%  { transform: translate3d(-8%, 0, 0); opacity: 0.9; }
+}
+
+/* 四角压暗：老监控镜头的暗角，顺带把雪花往中间收一收 */
+.gl-vignette {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(120% 90% at 50% 45%, transparent 48%, rgba(0, 0, 0, 0.72) 100%);
+}
+
+/* OSD：监控画面自己打在画面上的那几行字。等宽 + 字距拉开，跟游戏里别的字明显不是一套，
+   才像"这层字不是界面、是画面自带的"。 */
+.gl-osd {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+  color: rgba(236, 244, 248, 0.92);
+  text-align: center;
+  padding: 0 16px;
+}
+
+/* 角标压在状态栏（60px 高）下面：画面里"被拍下来的"那一部分是地图，状态栏是玩家自己
+   电脑的界面，OSD 属于前者。顺带避开演出淡入淡出时角标跟状态栏文字叠在一起。 */
+.gl-osd-rec {
+  position: absolute;
+  top: 76px;
+  left: 22px;
+  font-size: 12px;
+  letter-spacing: 0.22em;
+  color: rgba(255, 120, 110, 0.95);
+  animation: glBlink 1s steps(1, end) infinite;
+}
+
+.gl-osd-cam {
+  position: absolute;
+  top: 76px;
+  right: 22px;
+  font-size: 12px;
+  letter-spacing: 0.22em;
+  color: rgba(236, 244, 248, 0.55);
+}
+
+/* 时间码：整段演出唯一要玩家读到的信息。青/红两道错位投影假装色彩分离，
+   数字用 tabular-nums，乱跳的时候不会左右抖。 */
+.gl-osd-stamp {
+  font-size: clamp(20px, 5.2vmin, 44px);
+  letter-spacing: 0.14em;
+  font-variant-numeric: tabular-nums;
+  text-shadow:
+    2px 0 rgba(255, 90, 90, 0.55),
+    -2px 0 rgba(110, 225, 255, 0.55);
+  animation: glStampJitter 0.13s steps(1, end) infinite;
+}
+
+.gl-osd-note {
+  font-size: clamp(11px, 2.2vmin, 14px);
+  letter-spacing: 0.4em;
+  text-indent: 0.4em; /* 字距是加在右边的，补一格才真居中 */
+  color: rgba(236, 244, 248, 0.6);
+}
+
+@keyframes glBlink {
+  0%, 49%   { opacity: 1; }
+  50%, 100% { opacity: 0.15; }
+}
+
+@keyframes glStampJitter {
+  0%   { transform: translate3d(0, 0, 0); }
+  25%  { transform: translate3d(-2px, 1px, 0); }
+  50%  { transform: translate3d(1px, -1px, 0); }
+  75%  { transform: translate3d(2px, 0, 0); }
+}
+
+/* 重新锁上：时间码停止乱跳、字距收拢一下落定，这一下就是"锁定"的手感 */
+#glitch-overlay.gl-locked .gl-osd-stamp {
+  animation: glStampLock 0.45s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes glStampLock {
+  0%   { opacity: 0.25; letter-spacing: 0.34em; transform: translate3d(0, 0, 0); }
+  18%  { opacity: 1; }
+  100% { opacity: 1; letter-spacing: 0.14em; transform: translate3d(0, 0, 0); }
+}
+
+#glitch-overlay.gl-locked .gl-tear,
+#glitch-overlay.gl-locked .gl-roll { opacity: 0.25; }
+#glitch-overlay.gl-locked .gl-snow { opacity: 0.22; }
+
+/* 世界跟着跳一下：垂直同步跑掉时画面上下弹的那种硬跳。
+   跟 quake 一样统一带 scale(1.008) 把边缘顶出去，免得位移时露出 body 底色。 */
+body.glitching #app {
+  animation: glWorldRoll var(--gl-ms, 1500ms) steps(1, end) both;
+  will-change: transform;
+}
+
+@keyframes glWorldRoll {
+  0%   { transform: translate3d(0, 0, 0) scale(1.008); }
+  6%   { transform: translate3d(0, -9px, 0) scale(1.008); }
+  11%  { transform: translate3d(3px, 7px, 0) scale(1.008); }
+  16%  { transform: translate3d(-2px, -4px, 0) scale(1.008); }
+  62%  { transform: translate3d(0, 6px, 0) scale(1.008); }
+  67%  { transform: translate3d(-3px, -7px, 0) scale(1.008); }
+  74%  { transform: translate3d(2px, 2px, 0) scale(1.008); }
+  82%  { transform: translate3d(0, -3px, 0) scale(1.008); }
+  90%  { transform: translate3d(0, 0, 0) scale(1.008); }
+  100% { transform: translate3d(0, 0, 0) scale(1); }
+}
+
+/* 系统开了"减少动态效果"：跳动、撕裂、雪花抖动全关，只留一层静止的雪花和暗角当遮挡，
+   时间码照常锁定——该遮住的还是遮住了，该读到的那行字也还在。 */
+@media (prefers-reduced-motion: reduce) {
+  .gl-snow,
+  .gl-snow::before,
+  .gl-snow::after,
+  .gl-scan,
+  .gl-roll,
+  .gl-tear,
+  .gl-osd-stamp { animation: none; }
+  .gl-tear { opacity: 0.4; }
+  body.glitching #app { animation: none; }
 }

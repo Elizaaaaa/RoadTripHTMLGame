@@ -1,0 +1,667 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>格位编排台 · 白湖镇</title>
+<!--
+  tools/slot-planner.html —— 三天调查格位的编排台。
+  要起本地静态服务器，访问 /tools/slot-planner.html（它要 fetch ../content/*.json）。
+
+  它做三件事：
+  1. 读真实的 content/days.json + archive.json + hotspots.json，把每天的格位容量、已有事件、
+     两次地震钉死的格子画出来（算法跟 engine/time.js 的 crossedTimedEvents 一致）；
+  2. 让你往事件池里添新的关键事件，再把池里的事件拖（或点）进具体格子；
+  3. 保存成 content/drafts/slot-plan.json —— 那个文件就是给 Claude 的输入，
+     存完跟它说一声「看一下格位表」，它按这份安排去改 content/days.json。
+
+  保存走 File System Access API（showSaveFilePicker）：第一次会让你选保存位置，
+  选 content/drafts/slot-plan.json，之后再点保存就直接写回同一个文件。浏览器不支持
+  这个 API 时退回“下载 + 手动放进 content/drafts/”。
+-->
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+  /* 沿用 engine/ui.css 的 --bg/--accent/--accent-2/--danger，跟游戏本体同一套颜色 */
+  :root {
+    --ink:#0a0a0a; --panel:#141414; --panel-hi:#1c1b19;
+    --line:#332f2a; --line-soft:#242220;
+    --text:#d8d8d8; --muted:#8d867a; --faint:#5c564d;
+    --amber:#ff9900; --amber-dim:#7a4f10;
+    --cyan:#00ccff; --rust:#ff4433; --salt:#cfc6b4; --ok:#28c840;
+    --mono:'IBM Plex Mono',ui-monospace,Menlo,monospace;
+    --sans:'IBM Plex Sans','PingFang SC','Microsoft YaHei',system-ui,sans-serif;
+  }
+  * { box-sizing:border-box; }
+  body {
+    margin:0; padding-block:28px 64px; padding-left:20px; padding-right:20px;
+    background:var(--ink); color:var(--text);
+    font-family:var(--sans); font-size:14px; line-height:1.6;
+    -webkit-font-smoothing:antialiased;
+  }
+  .wrap { max-width:1280px; margin:0 auto; }
+
+  h1 { font-size:24px; font-weight:600; margin:0 0 8px; letter-spacing:-0.01em; }
+  .eyebrow { font-family:var(--mono); font-size:11px; letter-spacing:.18em; text-transform:uppercase; color:var(--faint); margin:0 0 8px; }
+  .lede { margin:0; max-width:74ch; color:var(--muted); font-size:13.5px; }
+  .lede code, code { font-family:var(--mono); font-size:12px; color:var(--salt); }
+  .lede strong { color:var(--text); font-weight:500; }
+
+  /* ---------- 工具条 ---------- */
+  .bar {
+    display:flex; flex-wrap:wrap; align-items:center; gap:10px 14px;
+    margin:20px 0 26px; padding:12px 14px;
+    background:var(--panel); border:1px solid var(--line-soft);
+  }
+  button {
+    font-family:var(--sans); font-size:13px; color:var(--text);
+    background:rgba(255,153,0,.14); border:1px solid var(--amber-dim);
+    padding:6px 14px; cursor:pointer;
+  }
+  button:hover { background:rgba(255,153,0,.24); border-color:var(--amber); }
+  button:focus-visible { outline:2px solid var(--cyan); outline-offset:2px; }
+  button.ghost { background:none; border-color:var(--line); color:var(--muted); }
+  button.ghost:hover { border-color:var(--muted); color:var(--text); }
+  button.primary { background:rgba(255,153,0,.24); border-color:var(--amber); color:#ffd9a0; font-weight:500; }
+  .bar label { display:flex; align-items:center; gap:6px; font-size:12.5px; color:var(--muted); cursor:pointer; }
+  .bar input[type=checkbox] { accent-color:var(--amber); }
+  #status { font-family:var(--mono); font-size:12px; color:var(--faint); margin-left:auto; }
+  #status.ok { color:var(--ok); }
+  #status.err { color:var(--rust); }
+
+  /* ---------- 布局 ---------- */
+  .layout { display:grid; grid-template-columns:minmax(0,1fr) 312px; gap:26px; align-items:start; }
+  @media (max-width:900px) { .layout { grid-template-columns:1fr; } }
+
+  /* ---------- 轨道 ---------- */
+  .day { margin-bottom:30px; }
+  .day-head { display:flex; flex-wrap:wrap; align-items:baseline; gap:6px 14px; padding-bottom:8px; border-bottom:1px solid var(--line); margin-bottom:12px; }
+  .day-n { font-family:var(--mono); font-size:17px; font-weight:600; }
+  .day-date { font-size:13px; color:var(--muted); }
+  .day-meta { margin-left:auto; font-family:var(--mono); font-variant-numeric:tabular-nums; font-size:12px; color:var(--faint); }
+  .day-meta b { color:var(--amber); font-weight:500; }
+  .day-meta.over b { color:var(--rust); }
+
+  .track-wrap { overflow-x:auto; padding-bottom:4px; }
+  .track {
+    display:grid; grid-template-columns:repeat(var(--n),minmax(46px,1fr)); gap:3px; row-gap:0;
+    width:calc(var(--n) / 16 * 100%); min-width:calc(var(--n) * 50px);
+  }
+  .tick { grid-row:1; align-self:end; font-family:var(--mono); font-size:10px; line-height:1.25; padding-bottom:5px; white-space:nowrap; position:relative; }
+  .tick span { display:block; }
+  .tick::after { content:""; position:absolute; left:0; bottom:0; width:2px; height:7px; }
+  .tick-quake { color:var(--cyan); } .tick-quake::after { background:var(--cyan); }
+  .tick-plan { color:var(--faint); } .tick-plan::after { background:var(--faint); }
+  .spacer { grid-row:1; }
+
+  .cell {
+    grid-row:2; min-height:66px; border:1px solid var(--line-soft); background:var(--panel);
+    display:flex; flex-direction:column; gap:2px; padding:4px 5px; overflow:hidden;
+    cursor:pointer; position:relative;
+  }
+  .cell.is-empty { background:repeating-linear-gradient(135deg,rgba(207,198,180,.045) 0 2px,transparent 2px 6px),var(--panel); border-style:dashed; }
+  .cell.is-locked { cursor:not-allowed; }
+  .cell.is-return { background:repeating-linear-gradient(135deg,rgba(216,216,216,.07) 0 3px,transparent 3px 8px),var(--panel); border-color:var(--line); }
+  .cell.is-quake { border-color:var(--cyan); box-shadow:inset 0 0 0 1px rgba(0,204,255,.28); }
+  .cell.has-main { background:linear-gradient(180deg,rgba(255,153,0,.22),rgba(255,153,0,.10)); border-color:var(--amber); }
+  .cell.has-sub  { background:rgba(255,153,0,.07); border-color:var(--amber-dim); }
+  .cell.drop-ok  { outline:2px solid var(--cyan); outline-offset:-2px; }
+  .cell.armed    { outline:1px dashed var(--cyan); outline-offset:-3px; }
+  .cell-i { font-family:var(--mono); font-variant-numeric:tabular-nums; font-size:10px; color:var(--faint); }
+  .cell.has-main .cell-i, .cell.has-sub .cell-i { color:var(--amber); }
+  .cell-body {
+    font-size:11px; line-height:1.3; color:var(--text); word-break:break-word;
+    display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical; overflow:hidden;
+  }
+  .cell-sub { font-family:var(--mono); font-size:9px; color:var(--muted); }
+  .cell-keys { display:flex; flex-wrap:wrap; gap:2px; margin-top:auto; }
+  .kchip { font-family:var(--mono); font-size:8.5px; padding:0 3px; border:1px solid var(--amber-dim); color:#f0c383; }
+  .rail { grid-row:3; font-family:var(--mono); font-variant-numeric:tabular-nums; font-size:10px; color:var(--faint); padding-top:5px; white-space:nowrap; }
+
+  .day-note { margin:10px 0 0; font-size:12.5px; color:var(--muted); max-width:72ch; }
+  .day-note.warn { color:#ff8d7f; }
+
+  /* ---------- 事件池 ---------- */
+  .pool-panel { position:sticky; top:20px; align-self:start; max-height:calc(100vh - 40px); overflow:auto; }
+  @media (max-width:900px) { .pool-panel { position:static; max-height:none; } }
+  h2 { font-family:var(--mono); font-size:11px; font-weight:500; letter-spacing:.16em; text-transform:uppercase; color:var(--faint); margin:0 0 10px; padding-bottom:7px; border-bottom:1px solid var(--line-soft); }
+  #pool { display:flex; flex-direction:column; gap:5px; min-height:70px; padding:6px; border:1px dashed var(--line-soft); }
+  #pool.drop-ok { border-color:var(--cyan); border-style:solid; }
+  .pool-empty { font-size:12px; color:var(--faint); padding:10px 4px; text-align:center; }
+
+  .item {
+    background:var(--panel-hi); border:1px solid var(--line); border-left-width:3px;
+    padding:6px 8px; cursor:grab; display:flex; flex-direction:column; gap:2px;
+  }
+  .item.main { border-left-color:var(--amber); }
+  .item.sub  { border-left-color:var(--faint); }
+  .item.armed { outline:1px solid var(--cyan); }
+  .item:active { cursor:grabbing; }
+  .item-t { font-size:12.5px; color:var(--text); line-height:1.35; }
+  .item-m { font-family:var(--mono); font-size:10px; color:var(--muted); }
+  .item-new { color:var(--cyan); }
+
+  /* ---------- 添加表单 ---------- */
+  form { margin-top:16px; display:flex; flex-direction:column; gap:7px; }
+  form input, form select, form textarea {
+    font-family:var(--sans); font-size:12.5px; color:var(--text);
+    background:var(--ink); border:1px solid var(--line); padding:5px 7px; width:100%;
+  }
+  form textarea { resize:vertical; min-height:44px; font-size:12px; }
+  form input:focus, form select:focus, form textarea:focus { outline:1px solid var(--cyan); border-color:var(--cyan); }
+  .f-row { display:grid; grid-template-columns:1fr 1fr; gap:7px; }
+  .f-lab { font-family:var(--mono); font-size:10px; letter-spacing:.1em; text-transform:uppercase; color:var(--faint); }
+  .keypick { display:flex; flex-wrap:wrap; gap:4px; }
+  .keypick label { display:flex; align-items:center; gap:3px; font-family:var(--mono); font-size:10.5px; color:var(--muted); cursor:pointer; }
+  .keypick input { width:auto; accent-color:var(--amber); }
+
+  .hint { font-size:11.5px; color:var(--faint); line-height:1.5; margin:10px 0 0; }
+  .legend { display:flex; flex-wrap:wrap; gap:5px 16px; font-size:11.5px; color:var(--muted); margin-bottom:16px; }
+  .lg { display:flex; align-items:center; gap:5px; }
+  .sw { width:15px; height:10px; border:1px solid var(--line-soft); flex:none; }
+  .sw.m { background:rgba(255,153,0,.22); border-color:var(--amber); }
+  .sw.s { background:rgba(255,153,0,.07); border-color:var(--amber-dim); }
+  .sw.e { background:repeating-linear-gradient(135deg,rgba(207,198,180,.14) 0 2px,transparent 2px 6px); border-style:dashed; }
+  .sw.r { background:repeating-linear-gradient(135deg,rgba(216,216,216,.16) 0 3px,transparent 3px 8px); border-color:var(--line); }
+  .sw.q { border-color:var(--cyan); }
+  #boot-error { color:var(--rust); font-family:var(--mono); font-size:13px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <p class="eyebrow">White Lake · slot planner</p>
+  <h1>格位编排台</h1>
+  <p class="lede">时间只在「点开一个当前真有未触发事件的调查地点」时才走 1 小时，所以<strong>一天有几个事件，这一天就有多长</strong>。把事件拖进格子来排这三天的节奏；两次地震按格数钉死，拖不动。排布依据见 <code>design-doc.md</code> 2.1 节。</p>
+
+  <div class="bar">
+    <button class="primary" id="btn-save">保存到 slot-plan.json</button>
+    <button class="ghost" id="btn-copy">复制 JSON</button>
+    <button class="ghost" id="btn-reset">按 days.json 重置</button>
+    <label><input type="checkbox" id="opt-return" checked>最后一格留作回程</label>
+    <span id="status">读取中…</span>
+  </div>
+
+  <div class="legend">
+    <span class="lg"><span class="sw m"></span>主线</span>
+    <span class="lg"><span class="sw s"></span>支线</span>
+    <span class="lg"><span class="sw e"></span>空格</span>
+    <span class="lg"><span class="sw r"></span>回程</span>
+    <span class="lg"><span class="sw q"></span>地震（钉死）</span>
+  </div>
+
+  <div class="layout">
+    <main>
+      <div id="days"></div>
+      <div id="boot-error"></div>
+    </main>
+
+    <aside class="pool-panel">
+      <h2>事件池</h2>
+      <div id="pool"></div>
+      <p class="hint">拖到左边的格子里；也可以<strong>点一下</strong>选中、再点一个格子放下（触屏用这个）。点格子里已放的事件会把它拿起来，再点事件池放回去。</p>
+
+      <form id="add-form">
+        <h2 style="margin-top:6px">添加关键事件</h2>
+        <div>
+          <div class="f-lab">标题 / 一句话内容</div>
+          <input id="f-title" required placeholder="例：镇民第一次回信">
+        </div>
+        <div class="f-row">
+          <div>
+            <div class="f-lab">地点</div>
+            <select id="f-loc"></select>
+          </div>
+          <div>
+            <div class="f-lab">类型</div>
+            <select id="f-kind">
+              <option value="main">主线</option>
+              <option value="sub">支线</option>
+            </select>
+          </div>
+        </div>
+        <div>
+          <div class="f-lab">带出哪些关键词条</div>
+          <div class="keypick" id="f-keys"></div>
+        </div>
+        <div>
+          <div class="f-lab">备注（写给 Claude 的实现提示）</div>
+          <textarea id="f-note" placeholder="例：纸条通道正式打通，这一格是第 2 天的主轴"></textarea>
+        </div>
+        <button type="submit">加进事件池</button>
+      </form>
+
+      <p class="hint" id="pool-stat"></p>
+    </aside>
+  </div>
+</div>
+
+<script type="module">
+const $ = s => document.querySelector(s);
+const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const clock = m => String(Math.floor(m / 60)).padStart(2,'0') + ':' + String(m % 60).padStart(2,'0');
+const PLAN_PATH = '../content/drafts/slot-plan.json';
+
+const setStatus = (msg, cls = '') => { const el = $('#status'); el.textContent = msg; el.className = cls; };
+
+// ---------- 数据 ----------
+let days, archive, hotspots, mainKeys = [], locName = {};
+let model = null;   // { returnSlot, items:{id:item}, place:{ '1':[id|null,...] } }
+let armed = null;   // 点选模式下被拿起来的事件 id
+let newSeq = 1;
+
+const LINK = /\[\[[^\|\]]+\|([^\]]+)\]\]/g;
+function keysIn(obj, out = new Set()) {
+  if (typeof obj === 'string') { let m; LINK.lastIndex = 0; while ((m = LINK.exec(obj))) out.add(m[1]); }
+  else if (Array.isArray(obj)) obj.forEach(v => keysIn(v, out));
+  else if (obj && typeof obj === 'object') for (const [k, v] of Object.entries(obj)) if (k !== '_comment') keysIn(v, out);
+  return out;
+}
+
+/** 某个定时事件落在第几格：跟 engine/time.js crossedTimedEvents 的左开右闭区间一致。 */
+const slotOfMinute = (day, at) => Math.ceil((at - day.startMin) / 60);
+
+async function boot() {
+  try {
+    [days, archive, hotspots] = await Promise.all([
+      fetch('../content/days.json').then(r => r.json()),
+      fetch('../content/archive.json').then(r => r.json()),
+      fetch('../assets/maps/hotspots.json').then(r => r.json())
+    ]);
+  } catch (err) {
+    $('#boot-error').textContent = '读不到 content/*.json —— 这个工具要起本地静态服务器后访问 /tools/slot-planner.html，不能直接双击打开。';
+    setStatus('读取失败', 'err');
+    return;
+  }
+
+  mainKeys = Object.keys(archive).filter(k => archive[k] && archive[k].linkedMainCase);
+  for (const h of hotspots.hotspots) locName[h.id] = h.name;
+
+  fillForm();
+  let saved = null;
+  try {
+    const r = await fetch(PLAN_PATH + '?t=' + Date.now());
+    if (r.ok) saved = await r.json();
+  } catch (_) { /* 还没存过，正常 */ }
+
+  const hasPlan = saved && saved.days && ['1','2','3'].some(d => saved.days[d] && (saved.days[d].placed || []).length);
+  if (hasPlan) { model = fromSaved(saved); setStatus('已载入上次保存的安排', 'ok'); }
+  else { model = seedFromDays(); setStatus('按 content/days.json 生成了起手安排'); }
+
+  $('#opt-return').checked = model.returnSlot;
+  wirePoolOnce();
+  render();
+}
+
+/** 从 days.json 造出起手安排：已有事件按数组顺序摆进前几格。 */
+function seedFromDays() {
+  const m = { returnSlot: true, items: {}, place: {} };
+  for (const d of ['1','2','3']) {
+    const day = days[d];
+    const n = (day.endMin - day.startMin) / 60;
+    m.place[d] = Array(n).fill(null);
+    const pins = pinnedOf(d, m.returnSlot);
+    let slot = 0;
+    const seen = new Set();
+    for (const e of day.events || []) {
+      if (!e.loc) continue;                 // next 串出来的，不占格
+      if (seen.has(e.loc + '|' + (e.requires ? 'gated' : ''))) { /* 同地点多条照排 */ }
+      // 同一个地点上互斥的两条（requires.allMainClues true/false）只算一格
+      const twin = (day.events || []).find(o => o !== e && o.loc === e.loc && o.requires && e.requires
+        && o.requires.allMainClues !== e.requires.allMainClues);
+      if (twin && seen.has('twin:' + e.loc)) continue;
+      if (twin) seen.add('twin:' + e.loc);
+
+      const id = e.id;
+      m.items[id] = {
+        id, eventId: e.id, loc: e.loc, locName: locName[e.loc] || e.loc,
+        kind: e.mainline ? 'main' : 'sub',
+        label: shortLabel(e), keys: [...keysIn(e)].filter(k => mainKeys.includes(k)),
+        dice: e.type === 'diceCheck', choice: e.type === 'choice',
+        note: twin ? '工厂那两条事件互斥，只占 1 格' : '', isNew: false
+      };
+      while (slot < n && pins[slot + 1]) slot++;   // 跳过地震/回程这些钉死的格子
+      if (slot < n) m.place[d][slot++] = id;
+    }
+  }
+  return m;
+}
+
+function shortLabel(e) {
+  if (e.title) return e.title;
+  const t = (e.text || '').split('\n')[0].replace(LINK, '$&');
+  const plain = t.replace(/\[\[([^\|\]]+)\|[^\]]+\]\]/g, '$1');
+  return plain.length > 14 ? plain.slice(0, 14) + '…' : plain || e.id;
+}
+
+function fromSaved(saved) {
+  const m = { returnSlot: saved.returnSlotReserved !== false, items: {}, place: {} };
+  const take = it => { m.items[it.id] = { ...it }; if (it.isNew) { const n = Number(String(it.id).replace(/\D/g,'')); if (n >= newSeq) newSeq = n + 1; } };
+  for (const d of ['1','2','3']) {
+    const n = (days[d].endMin - days[d].startMin) / 60;
+    m.place[d] = Array(n).fill(null);
+    for (const p of (saved.days[d] && saved.days[d].placed) || []) {
+      take(p);
+      if (p.slot >= 1 && p.slot <= n) m.place[d][p.slot - 1] = p.id;
+    }
+  }
+  for (const it of saved.pool || []) take(it);
+  return m;
+}
+
+// ---------- 钉死的格子 ----------
+function pinnedOf(d, returnSlot) {
+  if (returnSlot === undefined) returnSlot = model.returnSlot;
+  const day = days[d];
+  const n = (day.endMin - day.startMin) / 60;
+  const out = {};
+  for (const t of day.timedEvents || []) {
+    const s = slotOfMinute(day, t.at);
+    if (s >= 1 && s <= n) out[s] = { kind:'quake', id:t.id, label:'M' + ((t.quake && t.quake.magnitude) || '?'), clock:clock(t.at) };
+  }
+  // 第 3 天走到高潮就当场结束，不需要回程；第 1、2 天最后一格留给回加油站发布
+  if (returnSlot && d !== '3') out[n] = { kind:'return', label:'回程' };
+  return out;
+}
+
+// ---------- 渲染 ----------
+function render() {
+  normalize();
+  const wrap = $('#days');
+  wrap.innerHTML = ['1','2','3'].map(renderDay).join('');
+  renderPool();
+  wireDrops();
+}
+
+/** 钉死的格子上不该压着事件——有就退回事件池。 */
+function normalize() {
+  let bumped = 0;
+  for (const d of ['1','2','3']) {
+    const pins = pinnedOf(d);
+    model.place[d] = model.place[d].map((id, k) => {
+      if (id && pins[k + 1]) { bumped++; return null; }
+      return id;
+    });
+  }
+  if (bumped) setStatus(bumped + ' 条事件压在钉死的格子上，已退回事件池');
+}
+
+function renderDay(d) {
+  const day = days[d];
+  const n = (day.endMin - day.startMin) / 60;
+  const pins = pinnedOf(d);
+  const used = model.place[d].filter(Boolean).length;
+  const cap = n - Object.keys(pins).filter(s => pins[s].kind === 'return').length;
+  const DATE = { '1':'7 月 3 日 · 抵达夜', '2':'7 月 4 日', '3':'7 月 5 日 · 高潮日' };
+  const NOTE = {
+    '1':'第 1 天格位是钉死的：加油站翻旧报纸开出中心广场，广场的 e1 开出沙狐旅馆。只有 3 格可用，别指望它背关键线索。',
+    '2':'M6.4 落在第 3 格——它之前必须有 2 格实事件，否则那次地震永远不会响。纸条通道打通建议坐第 8–9 格。',
+    '3':'M7.1 落在第 13 格：这一天排不满 13 格，那次地震就只能靠结局后日谈里的新闻兑现。高潮抉择建议放第 15 格，前面留出「把婴儿问出来」的四格。'
+  };
+
+  const ticks = Array.from({length:n}, (_,k) => {
+    const p = pins[k+1];
+    if (p && p.kind === 'quake') return `<div class="tick tick-quake"><span>${esc(p.label)}</span><span>${esc(p.clock)}</span></div>`;
+    if (d === '3' && k+1 === 15) return `<div class="tick tick-plan"><span>高潮</span><span>规划位</span></div>`;
+    return '<div class="spacer"></div>';
+  }).join('');
+
+  const cells = Array.from({length:n}, (_,k) => cellHTML(d, k, pins[k+1])).join('');
+
+  const rail = Array.from({length:n}, (_,k) => {
+    const show = n <= 4 || k % 4 === 0 || k === n - 1;
+    return `<div class="rail">${show ? clock(day.startMin + k * 60) : ''}</div>`;
+  }).join('');
+
+  return `<section class="day" data-day="${d}">
+    <div class="day-head">
+      <span class="day-n">第 ${d} 天</span>
+      <span class="day-date">${DATE[d]}</span>
+      <span class="day-meta${used > cap ? ' over' : ''}">${clock(day.startMin)}–${clock(day.endMin)} · <b>${used}</b>/${cap} 格</span>
+    </div>
+    <div class="track-wrap"><div class="track" style="--n:${n}">${ticks}${cells}${rail}</div></div>
+    <p class="day-note${d === '3' ? ' warn' : ''}">${NOTE[d]}</p>
+  </section>`;
+}
+
+function cellHTML(d, k, pin) {
+  const i = k + 1;
+  const id = model.place[d][k];
+  const it = id && model.items[id];
+
+  if (pin && pin.kind === 'quake') {
+    return `<div class="cell is-locked is-quake" data-day="${d}" data-slot="${k}">
+      <span class="cell-i">${i}</span>
+      <span class="cell-body">${esc(pin.label)} 地震</span>
+      <span class="cell-sub">钉死 · ${esc(pin.id)}</span></div>`;
+  }
+  if (pin && pin.kind === 'return') {
+    return `<div class="cell is-locked is-return" data-day="${d}" data-slot="${k}">
+      <span class="cell-i">${i}</span><span class="cell-body">回程</span>
+      <span class="cell-sub">剪辑发布</span></div>`;
+  }
+  if (!it) {
+    return `<div class="cell is-empty drop" data-day="${d}" data-slot="${k}"><span class="cell-i">${i}</span></div>`;
+  }
+  return `<div class="cell drop has-${it.kind}" data-day="${d}" data-slot="${k}" draggable="true" data-id="${esc(it.id)}">
+    <span class="cell-i">${i}</span>
+    <span class="cell-body">${esc(it.label)}</span>
+    <span class="cell-sub">${esc(it.locName)}${it.dice ? ' 🎲' : ''}${it.choice ? ' ⚖' : ''}${it.isNew ? ' ✚' : ''}</span>
+    <span class="cell-keys">${it.keys.map(k2 => `<span class="kchip">${esc(k2)}</span>`).join('')}</span>
+  </div>`;
+}
+
+function placedIds() {
+  const s = new Set();
+  for (const d of ['1','2','3']) for (const id of model.place[d]) if (id) s.add(id);
+  return s;
+}
+
+function renderPool() {
+  const placed = placedIds();
+  const list = Object.values(model.items).filter(it => !placed.has(it.id));
+  $('#pool').innerHTML = list.length
+    ? list.map(it => `<div class="item ${it.kind}${armed === it.id ? ' armed' : ''}" draggable="true" data-id="${esc(it.id)}">
+        <span class="item-t">${esc(it.label)}</span>
+        <span class="item-m">${esc(it.locName)} · ${it.kind === 'main' ? '主线' : '支线'}${it.isNew ? ' · <span class="item-new">新</span>' : ''}${it.keys.length ? ' · ' + esc(it.keys.join(' ')) : ''}</span>
+      </div>`).join('')
+    : '<p class="pool-empty">池子是空的——所有事件都已经排进格子了</p>';
+  $('#pool-stat').textContent = `事件池 ${list.length} 条 · 已排 ${placed.size} 条 · 新增 ${Object.values(model.items).filter(i => i.isNew).length} 条`;
+}
+
+// ---------- 拖放 + 点选 ----------
+function moveTo(id, d, k) {
+  for (const dd of ['1','2','3']) model.place[dd] = model.place[dd].map(x => x === id ? null : x);
+  if (d !== null) {
+    const occupant = model.place[d][k];
+    model.place[d][k] = id;
+    if (occupant && occupant !== id) { /* 被顶掉的回池子 */ }
+  }
+  armed = null;
+  render();
+}
+
+function wireDrops() {
+  document.querySelectorAll('.item, .cell[draggable=true]').forEach(el => {
+    el.addEventListener('dragstart', e => {
+      e.dataTransfer.setData('text/plain', el.dataset.id);
+      e.dataTransfer.effectAllowed = 'move';
+    });
+  });
+  document.querySelectorAll('.cell.drop').forEach(el => {
+    el.addEventListener('dragover', e => { e.preventDefault(); el.classList.add('drop-ok'); });
+    el.addEventListener('dragleave', () => el.classList.remove('drop-ok'));
+    el.addEventListener('drop', e => {
+      e.preventDefault(); el.classList.remove('drop-ok');
+      const id = e.dataTransfer.getData('text/plain');
+      if (id) moveTo(id, el.dataset.day, Number(el.dataset.slot));
+    });
+    el.addEventListener('click', () => {
+      const here = model.place[el.dataset.day][Number(el.dataset.slot)];
+      if (armed) moveTo(armed, el.dataset.day, Number(el.dataset.slot));
+      else if (here) { armed = here; render(); }
+    });
+  });
+}
+
+/**
+ * 事件池那一块是常驻元素（每次 render 只换 innerHTML），所以它的监听只能绑一次。
+ * 绑在 wireDrops() 里的话每渲染一次就多叠一个，点一下会被触发两次——选中随即被
+ * 同一次点击取消掉，看起来就是"点不动"。格子和事件条是每次重建的，不受影响。
+ */
+function wirePoolOnce() {
+  const pool = $('#pool');
+  pool.addEventListener('dragover', e => { e.preventDefault(); pool.classList.add('drop-ok'); });
+  pool.addEventListener('dragleave', () => pool.classList.remove('drop-ok'));
+  pool.addEventListener('drop', e => {
+    e.preventDefault(); pool.classList.remove('drop-ok');
+    const id = e.dataTransfer.getData('text/plain');
+    if (id) moveTo(id, null, 0);
+  });
+  pool.addEventListener('click', e => {
+    const item = e.target.closest('.item');
+    if (item) { armed = armed === item.dataset.id ? null : item.dataset.id; render(); return; }
+    if (armed) moveTo(armed, null, 0);
+  });
+}
+
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && armed) { armed = null; render(); } });
+
+// ---------- 添加关键事件 ----------
+function fillForm() {
+  $('#f-loc').innerHTML = hotspots.hotspots
+    .filter(h => h.type === 'investigation')
+    .map(h => `<option value="${esc(h.id)}">${esc(h.name)}</option>`).join('');
+  $('#f-keys').innerHTML = mainKeys
+    .map(k => `<label><input type="checkbox" value="${esc(k)}">${esc(k)}</label>`).join('');
+}
+
+$('#add-form').addEventListener('submit', e => {
+  e.preventDefault();
+  const title = $('#f-title').value.trim();
+  if (!title) return;
+  const loc = $('#f-loc').value;
+  const id = 'new' + (newSeq++);
+  model.items[id] = {
+    id, eventId: '', loc, locName: locName[loc] || loc,
+    kind: $('#f-kind').value, label: title,
+    keys: [...$('#f-keys').querySelectorAll('input:checked')].map(i => i.value),
+    dice: false, choice: false, note: $('#f-note').value.trim(), isNew: true
+  };
+  $('#f-title').value = ''; $('#f-note').value = '';
+  $('#f-keys').querySelectorAll('input:checked').forEach(i => { i.checked = false; });
+  render();
+  setStatus('已加进事件池，拖到格子里再保存');
+});
+
+$('#opt-return').addEventListener('change', e => { model.returnSlot = e.target.checked; render(); });
+
+$('#btn-reset').addEventListener('click', () => {
+  if (!confirm('丢掉当前安排，按 content/days.json 重新生成？新增的事件也会没掉。')) return;
+  model = seedFromDays();
+  $('#opt-return').checked = model.returnSlot;
+  render();
+  setStatus('已重置');
+});
+
+// ---------- 保存 ----------
+function buildPlan() {
+  const placed = placedIds();
+  const out = {
+    _comment: '由 tools/slot-planner.html 保存，是给 Claude 的输入：按 days[].placed 的安排去改 content/days.json。slot 是「第几次移动」不是钟点；引擎里事件挂在地点上、第 2/3 天的先后顺序由玩家决定，所以 slot 真正能落实的是三件事：这一天排几条事件（＝这一天有多长）、每条挂哪个 loc、同一个 loc 上的先后（数组顺序＝到访顺序）。isNew:true 的是还没写正文的新事件，note 是实现提示。',
+    savedAt: new Date().toISOString(),
+    returnSlotReserved: model.returnSlot,
+    days: {}, pool: []
+  };
+  for (const d of ['1','2','3']) {
+    const day = days[d];
+    const n = (day.endMin - day.startMin) / 60;
+    const pins = pinnedOf(d);
+    out.days[d] = {
+      window: clock(day.startMin) + '-' + clock(day.endMin),
+      slots: n,
+      pinned: Object.entries(pins).map(([s, p]) => ({ slot: Number(s), kind: p.kind, id: p.id || null, label: p.label })),
+      placed: model.place[d].map((id, k) => {
+        if (!id) return null;
+        const it = model.items[id];
+        return {
+          slot: k + 1,
+          clock: clock(day.startMin + k * 60) + '→' + clock(day.startMin + (k + 1) * 60),
+          ...it
+        };
+      }).filter(Boolean)
+    };
+  }
+  out.pool = Object.values(model.items).filter(it => !placed.has(it.id));
+  return out;
+}
+
+const json = () => JSON.stringify(buildPlan(), null, 2);
+
+// 保存句柄存在 IndexedDB 里，第二次起就不用再选文件
+const idb = {
+  db: null,
+  open() {
+    return this.db ? Promise.resolve(this.db) : new Promise((res, rej) => {
+      const r = indexedDB.open('slot-planner', 1);
+      r.onupgradeneeded = () => r.result.createObjectStore('kv');
+      r.onsuccess = () => { this.db = r.result; res(this.db); };
+      r.onerror = () => rej(r.error);
+    });
+  },
+  async get(k) {
+    const db = await this.open();
+    return new Promise(res => { const q = db.transaction('kv').objectStore('kv').get(k); q.onsuccess = () => res(q.result); q.onerror = () => res(null); });
+  },
+  async set(k, v) {
+    const db = await this.open();
+    return new Promise(res => { db.transaction('kv','readwrite').objectStore('kv').put(v, k).onsuccess = () => res(); });
+  }
+};
+
+let handle = null;
+idb.get('handle').then(h => { if (h) handle = h; });
+
+function download(text) {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([text], { type:'application/json' }));
+  a.download = 'slot-plan.json';
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+  setStatus('已下载 slot-plan.json —— 手动放进 content/drafts/', 'ok');
+}
+
+$('#btn-save').addEventListener('click', async () => {
+  const text = json();
+  if (!window.showSaveFilePicker) { download(text); return; }
+  try {
+    if (!handle) {
+      handle = await window.showSaveFilePicker({
+        suggestedName: 'slot-plan.json',
+        types: [{ description: 'JSON', accept: { 'application/json': ['.json'] } }]
+      });
+      await idb.set('handle', handle);
+    }
+    let perm = await handle.queryPermission({ mode:'readwrite' });
+    if (perm !== 'granted') perm = await handle.requestPermission({ mode:'readwrite' });
+    if (perm !== 'granted') { setStatus('没有写入权限', 'err'); return; }
+    const w = await handle.createWritable();
+    await w.write(text);
+    await w.close();
+    setStatus('已保存到 ' + handle.name + ' · ' + new Date().toLocaleTimeString(), 'ok');
+  } catch (err) {
+    if (err && err.name === 'AbortError') { setStatus('已取消'); return; }
+    console.warn(err);
+    handle = null;
+    download(text);
+  }
+});
+
+$('#btn-copy').addEventListener('click', async () => {
+  try { await navigator.clipboard.writeText(json()); setStatus('JSON 已复制到剪贴板', 'ok'); }
+  catch { setStatus('复制失败，浏览器不给剪贴板权限', 'err'); }
+});
+
+boot();
+</script>
+</body>
+</html>

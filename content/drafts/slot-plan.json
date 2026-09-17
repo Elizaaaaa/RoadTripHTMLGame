@@ -1,0 +1,11 @@
+{
+  "_comment": "三天格位安排。这个文件由 tools/slot-planner.html 写入（起本地静态服务器后访问 /tools/slot-planner.html，排完点「保存到 slot-plan.json」，选中本文件覆盖），也是给 Claude 的输入——存完跟它说一声「看一下格位表」，它按 days[].placed 去改 content/days.json。现在还没有保存过任何安排：只要没有 days 字段，编排台就按 content/days.json 的现状生成起手安排。",
+  "_format": {
+    "returnSlotReserved": "true = 每天最后一格留作回程（走地图回加油站发布）。见 design-doc.md 2.1 节末尾那个待定块：用满最后一格之后点地图上的加油站会直接判 night_madness。",
+    "days.<n>.slots": "这一天的总格数 =（endMin - startMin）/ 60",
+    "days.<n>.pinned": "钉死的格子：两次地震按 engine/time.js 的跨越判定算出落在第几格，加上回程格",
+    "days.<n>.placed": "排好的事件，slot 是「第几次移动」不是钟点。isNew:true 的是编排台里新加、还没写正文的事件，note 是写给 Claude 的实现提示",
+    "pool": "还没排进格子的事件",
+    "重要": "引擎里事件是挂在地点上的，第 2/3 天的先后顺序由玩家决定。所以 slot 真正能落实的是三件事：这一天排几条事件（＝这一天有多长）、每条挂哪个 loc、同一个 loc 上的先后（events 数组顺序＝到访顺序）。第 1 天是例外，那天的链是钉死的。"
+  }
+}

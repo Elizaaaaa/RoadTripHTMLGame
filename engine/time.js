@@ -18,6 +18,15 @@ export function getDayRange(dayContent) {
   return { start, end };
 }
 
+/**
+ * 某一天在故事里的日历日期（content/days.json 每天的 date 字段，如 "7月3日"）。
+ * 没配就退回"第 N 天"——引擎不自己算日期，故事定在哪三天由内容说了算。
+ * 结局窗口的"从某个时间点继续"要拿它拼出"几月几号几点"，见 main.js。
+ */
+export function formatDayDate(dayContent, day) {
+  return (dayContent && dayContent.date) || `第 ${day} 天`;
+}
+
 export function formatMinutes(min) {
   const h = Math.floor(min / 60);
   const m = Math.round(min % 60);

@@ -1,5 +1,5 @@
 {
-  "_comment": "示例数据，仅用于跑通引擎流程，非正式剧本。共 3 天，字段结构对应 design-doc.md 第 2/3/4/5 节。全程时间窗口不再是同一个常量：第 1 天只有晚上（startMin=1200/20:00 ~ endMin=1440/24:00），第 2、3 天是全天（startMin=480/08:00 ~ endMin=1440/24:00），每天的 startMin/endMin 字段见下方，由 engine/time.js 读取。真实故事请照此结构自行扩充 unlockedLocations / events / newspaper / signalPool / reviews / dialogues。每天还可以写 vlogTitle（这期视频标题）和 vlogComments（发布后手机数据页里的评论区，格式 { user, text, likes?, alien? }，alien:true 显示成灰色斜体的“未知来源”评论），频道名写在 meta.channel，见 engine/vlogstats.js。events[].text（以及 diceCheck 的 outcomes[].text）里可以写字面换行符 \\n 把长文本拆成几页，玩家每点一次“继续”翻一页，见 engine/main.js 的 splitSegments/playEventPages；调查回顾照旧显示原始整段文本，不受分页影响。dialogues 是 QQ/BB 事件后闲聊，跟 events[].id（+ 可选的第几页 afterSegment，不写默认绑最后一页）绑定，翻到那一页后必定播放（不进 signalPool、不随机、不进当日摘要），格式见 engine/dialogue.js 顶部注释：{ id, afterEvent: 事件id, afterSegment?: 页码, lines: [{ speaker: 'qq'|'bb', text }] }。",
+  "_comment": "示例数据，仅用于跑通引擎流程，非正式剧本。共 3 天，字段结构对应 design-doc.md 第 2/3/4/5 节。全程时间窗口不再是同一个常量：第 1 天只有晚上（startMin=1200/20:00 ~ endMin=1440/24:00），第 2、3 天是全天（startMin=480/08:00 ~ endMin=1440/24:00），每天的 startMin/endMin 字段见下方，由 engine/time.js 读取。真实故事请照此结构自行扩充 unlockedLocations / events / newspaper / signalPool / reviews / dialogues。每天还可以写 vlogTitle（这期视频标题）和 vlogComments（发布后手机数据页里的评论区，格式 { user, text, likes?, alien? }，alien:true 显示成灰色斜体的“未知来源”评论），频道名写在 meta.channel，见 engine/vlogstats.js。events[].text（以及 diceCheck 的 outcomes[].text）里可以写字面换行符 \\n 把长文本拆成几页，玩家每点一次“继续”翻一页，见 engine/main.js 的 splitSegments/playEventPages；调查回顾照旧显示原始整段文本，不受分页影响。每天的 date 是这一天在故事里的日历日期（7月3日 / 7月4日 / 7月5日，对应 2019-07-03~05），只用来给结局窗口的「从某个时间点继续」拼出“几月几号几点”，不写就退回“第 N 天”；type:'choice' 的事件可以写 rewindLabel（如“是否摧毁子午线仪”），它是结局窗口里「回到某个重大抉择」那份清单上的条目名，不写就用 title。dialogues 是 QQ/BB 事件后闲聊，跟 events[].id（+ 可选的第几页 afterSegment，不写默认绑最后一页）绑定，翻到那一页后必定播放（不进 signalPool、不随机、不进当日摘要），格式见 engine/dialogue.js 顶部注释：{ id, afterEvent: 事件id, afterSegment?: 页码, lines: [{ speaker: 'qq'|'bb', text }] }。",
 
   "meta": {
     "totalDays": 3,
@@ -8,6 +8,7 @@
 
   "1": {
     "_comment": "开局地图上只有加油站：unlockedLocations 是空的，中心广场要玩家在加油站「翻旧报纸」里点开 [[中心广场|square]] 这个词条才会出现——词条侧写了 unlocksLocation，见 content/archive.json。所以第 1 天的推进链是「加油站翻报纸 → 中心广场（e1/e2）→ 沙狐旅馆（e1 的 unlocksLocation）」，改这一天的内容时别把这条链掐断。",
+    "date": "7月3日",
     "startMin": 1200,
     "endMin": 1440,
     "unlockedLocations": [],
@@ -100,6 +101,7 @@
   },
 
   "2": {
+    "date": "7月4日",
     "startMin": 480,
     "endMin": 1440,
     "unlockedLocations": ["square", "library", "lake"],
@@ -136,7 +138,7 @@
         "sanityCost": 0
       },
       {
-        "id": "e3",
+        "id": "e5",
         "day": 2,
         "time": 560,
         "loc": "square",
@@ -154,7 +156,7 @@
         "type": "text",
         "mainline": true,
         "text": "账本最后一页，那笔[[违约金|contract_penalty]]的收款人栏写着一个名字——翻了翻镇史资料才对上号，那是本地[[看守人|caretaker]]的名字。旁边有人用铅笔补了一句：\"他后来就一直待在[[旧教堂|oldChurch]]，没再出来过。\"",
-        "clue": "caretaker_note",
+        "clues": ["library_note", "caretaker_note"],
         "unlocksArchive": ["caretaker"],
         "sanityCost": 8
       },
@@ -266,6 +268,7 @@
   },
 
   "3": {
+    "date": "7月5日",
     "startMin": 480,
     "endMin": 1440,
     "_comment": "高潮日。废弃工厂（alkaliWorks，子午线仪就封存在它地下）从这一天起开在地图上——第 2 天旅馆那张纸条（e13）已经点过名字了，第 3 天才真的走得进去。工厂上挂着两条事件，引擎取 events 数组里第一条 requires 满足的那一条（见 main.js eventAvailable）：关键线索收齐 → e_finale（高潮抉择，直接决定结局）；没收齐 → e_finale_locked（进不去，什么也没发生，最后只能走「一无所知」）。e_finale_baby 没有 loc，它只能由 e_finale 里「修复」那个选项的 next 串出来。",
@@ -340,6 +343,7 @@
         "mainline": true,
         "requires": { "allMainClues": true },
         "title": "废弃工厂 · 地下",
+        "rewindLabel": "是否摧毁子午线仪",
         "unlocksArchive": ["meridian"],
         "sanityCost": 8,
         "text": "锈死的铁门是从里面被顶开的——推开的时候两人都看见了，门轴上的锈是新崩的。\n楼梯往下走了很久，比这座工厂看起来该有的深度深得多。墙壁从水泥变成盐，白得发亮。\n底下那间屋子中央立着一台机器：铁路信号灯的支架、工厂的压力表盘、还有一整圈从盐层里长出来的晶体柱，全被人硬拼在一起。表盘上的指针在走，走的方向不对。这就是[[子午线仪|meridian]]，1982 年把整座白湖镇从时间里剪下来的那件东西。\n它在漏。晶体柱上有一道裂口，裂口边缘的空气像被水泡过一样晃。\n机器底座上压着一张纸条，纸是新的，卤水的渍还没干透。上面的字写得很稳：「我们知道你们来了。这台东西撑不到明天。它坏了，我们全都会出去——现在只有两条路：把它砸了，或者把它修好。」\n纸条下面还压着第二张，字迹一样：「砸了它，我们回到你们那一边。修好它，我们留在这一天里，永远。两样都由你们决定。」",
@@ -370,6 +374,7 @@
         "type": "choice",
         "mainline": true,
         "title": "封印合拢之前",
+        "rewindLabel": "是否要帮助婴儿",
         "sanityCost": 5,
         "text": "「等一下。」\n纸条一张接一张从裂口里塞出来，字越写越快，墨被卤水泡得发散。\n「这里有个孩子。事故那天刚出生，什么都没赶上，他身上是干净的。我们不求别的——在你们把门关死之前，开一道小口，只要能过一个襁褓那么宽。」\n「我们全都留下。三十七年都留下了，不差这一次。只有他不该留下。」\n校准杆在 BB 手里发烫。晶体柱上的裂口只剩一指宽，再推到底就合拢了。",
         "prompt": "开一道口子，封印就会多松一瞬。不开，现在就能结束。",
