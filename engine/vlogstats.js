@@ -1,6 +1,9 @@
-// vlogstats.js —— 手机数据页：每天在剪辑台点"确认发布"之后弹出的互动数据面板，
-// 观感上就是两人发完当天的 vlog、掏出手机刷了一下后台（竖屏手机外壳 + 暖色玻璃
-// 拟态，跟 ui.css 那套仿 macOS 的灰调窗口刻意区分开，样式见 engine/phone.css）。
+// vlogstats.js —— vlog 数据页：每天在剪辑台点"确认发布"之后弹出的互动数据面板，
+// 观感上就是两人发完当天的 vlog、掏出手机刷了一下后台。
+//
+// 这个模块现在**只负责屏幕里的内容**：手机外壳（中框、刘海、状态栏、姿态、进出场）
+// 统一由 engine/phone.js 提供，本模块把一段 HTML 和几个事件绑定交给它挂载。
+// 样式见 engine/phone.css 的「app：vlog 数据页」一节。
 //
 // 数据从哪来：
 //   - 播放量由 engine/publish.js 结算，写进 state.publishLog（本模块不改这条规则）；
@@ -14,20 +17,18 @@
 //   "vlogComments": [                                // 这期视频下面的评论，不写就只显示当天的信号闪现
 //     { "user": "夜观星象", "text": "……", "likes": 12, "alien": true }
 //   ]
-// alien: true 的评论会显示成灰色斜体的"未知来源"样式，用来呼应"置顶那条不是我们发的"。
+// alien: true 的评论会显示成"加载不全"的样式，用来呼应"置顶那条不是我们发的"。
 // 频道名走 content/days.json 的 meta.channel = { name, handle }，不写兜底 QQ & BB。
 
 import * as reviewSys from './review.js';
+import * as phone from './phone.js';
 
 const IMPORTANCE_WEIGHT = { high: 1, mid: 0.6, low: 0.3 };
 const DEFAULT_CHANNEL = { name: 'QQ & BB', handle: '@on_the_road' };
 
-let overlay = null;      // #phone-overlay 容器
-let onCloseCb = null;    // 关闭后要走的下一步（正常流程里是"回旅馆休息"）
 let viewMode = 'today';  // 'today' | 'total'，顶部胶囊切换本期/累计
 let favIndex = 0;        // 最热片段卡当前显示第几条素材（右侧按钮循环切换）
 let ctx = null;          // 本次打开用到的全部数据，见 open()
-let teardown = [];       // 挂在 window 上的监听（拖拽滚动），close() 时统一摘掉
 
 // ---------- 确定性随机 ----------
 
@@ -158,7 +159,6 @@ const ICONS = {
   heart: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 20.6S3.6 15.3 3.6 9.8A4.4 4.4 0 0 1 12 7.7a4.4 4.4 0 0 1 8.4 2.1c0 5.5-8.4 10.8-8.4 10.8z"/></svg>',
   user: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 12a4.2 4.2 0 1 0 0-8.4 4.2 4.2 0 0 0 0 8.4zm0 1.8c-4 0-7.2 2.2-7.2 5v1.4h14.4v-1.4c0-2.8-3.2-5-7.2-5z"/></svg>',
   film: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M3 4.5h18v15H3zM6 4.5v15M18 4.5v15M3 9.5h3M3 14.5h3M18 9.5h3M18 14.5h3" fill="none" stroke="currentColor" stroke-width="1.6"/></svg>',
-  chevronDown: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>',
   shuffle: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17 4l3 3-3 3M20 7H14.5L6 17H3M17 20l3-3-3-3M20 17h-5.5L12.6 14.4M3 7h3l1.6 2.1"/></svg>'
 };
 
@@ -259,60 +259,52 @@ function commentsHTML() {
     </div>`;
 }
 
-function screenHTML() {
+/** 屏幕里的内容——外壳（中框/刘海/状态栏）由 phone.js 画，这里只管手机屏幕里显示什么。 */
+function contentHTML() {
   const { stats, total, channel, title, cover, day, glitch } = ctx;
   return `
-    <div class="phone-frame">
-      <div class="phone-screen" id="phone-screen">
-        <div class="phone-hero">
-          <img class="phone-hero-img" src="${escapeHTML(cover)}" alt="">
-          <div class="phone-hero-glow"></div>
-          <div class="phone-hero-fade"></div>
-          <div class="phone-topbar">
-            <button class="glass circle" id="phone-btn-comments" title="看评论">${ICONS.comment}</button>
-            <button class="glass circle" id="phone-btn-close" title="收起手机">${ICONS.close}</button>
-          </div>
-          <div class="phone-hero-meta">第 ${day} 天 · 刚刚发布</div>
-        </div>
-
-        <div class="phone-identity">
-          ${LAUREL}${LAUREL.replace('phone-laurel-left', 'phone-laurel-right')}
-          <div class="phone-name">${escapeHTML(channel.name)}</div>
-          <div class="phone-subtitle">${escapeHTML(title)}</div>
-        </div>
-
-        <div class="phone-toggle-row">
-          <button class="glass pill phone-toggle" id="phone-toggle">
-            <span class="phone-trophy">🏆</span>
-            <span id="phone-toggle-label">${viewMode === 'today' ? `${total.episodes} 期 · 本期数据` : `${total.episodes} 期 · 累计数据`}</span>
-          </button>
-        </div>
-
-        <div class="phone-stats" id="phone-stats">${statsGridHTML()}</div>
-
-        <div id="phone-fav-slot">${favoriteHTML()}</div>
-
-        ${glitch ? `<div class="phone-warning">${escapeHTML(glitch)}</div>` : ''}
-
-        <div class="phone-card phone-block">
-          <div class="phone-block-title"><span>完播率</span><span class="phone-block-value" id="phone-completion">${stats.completion}%</span></div>
-          <div class="phone-bar"><div class="phone-bar-fill" id="phone-bar"></div></div>
-          <div class="phone-subrow"><span>本期新增关注</span><strong>+${formatNum(stats.follows)}</strong></div>
-          <div class="phone-subrow"><span>关注者总数</span><strong>${formatNum(total.follows)}</strong></div>
-        </div>
-
-        ${commentsHTML()}
-
-        <div class="phone-actions">
-          <button class="glass pill" id="phone-btn-done">收起手机，回房休息</button>
-        </div>
+    <div class="phone-hero">
+      <img class="phone-hero-img" src="${escapeHTML(cover)}" alt="">
+      <div class="phone-hero-glow"></div>
+      <div class="phone-hero-fade"></div>
+      <div class="phone-topbar">
+        <button class="glass circle" id="phone-btn-comments" title="看评论">${ICONS.comment}</button>
+        <button class="glass circle" id="phone-btn-close" title="收起手机">${ICONS.close}</button>
       </div>
+      <div class="phone-hero-meta">第 ${day} 天 · 刚刚发布</div>
     </div>
 
-    <button class="phone-scroll-hint" id="phone-scroll-hint" type="button">
-      <span class="phone-scroll-hint-text">向下滑动查看更多</span>
-      ${ICONS.chevronDown}
-    </button>`;
+    <div class="phone-identity">
+      ${LAUREL}${LAUREL.replace('phone-laurel-left', 'phone-laurel-right')}
+      <div class="phone-name">${escapeHTML(channel.name)}</div>
+      <div class="phone-subtitle">${escapeHTML(title)}</div>
+    </div>
+
+    <div class="phone-toggle-row">
+      <button class="glass pill phone-toggle" id="phone-toggle">
+        <span class="phone-trophy">🏆</span>
+        <span id="phone-toggle-label">${total.episodes} 期 · 本期数据</span>
+      </button>
+    </div>
+
+    <div class="phone-stats" id="phone-stats">${statsGridHTML()}</div>
+
+    <div id="phone-fav-slot">${favoriteHTML()}</div>
+
+    ${glitch ? `<div class="phone-warning">${escapeHTML(glitch)}</div>` : ''}
+
+    <div class="phone-card phone-block">
+      <div class="phone-block-title"><span>完播率</span><span class="phone-block-value" id="phone-completion">${stats.completion}%</span></div>
+      <div class="phone-bar"><div class="phone-bar-fill" id="phone-bar"></div></div>
+      <div class="phone-subrow"><span>本期新增关注</span><strong>+${formatNum(stats.follows)}</strong></div>
+      <div class="phone-subrow"><span>关注者总数</span><strong>${formatNum(total.follows)}</strong></div>
+    </div>
+
+    ${commentsHTML()}
+
+    <div class="phone-actions">
+      <button class="glass pill" id="phone-btn-done">收起手机，回房休息</button>
+    </div>`;
 }
 
 /** 数字滚上去的入场动画；开了"减少动态效果"就直接显示终值。 */
@@ -331,23 +323,16 @@ function countUp(el, target) {
 }
 
 function playNumbers(delayMs) {
-  overlay.querySelectorAll('.phone-stat-num').forEach(el => {
+  document.querySelectorAll('#phone-content .phone-stat-num').forEach(el => {
     const target = Number(el.dataset.count) || 0;
     el.textContent = '0';
     setTimeout(() => countUp(el, target), delayMs);
   });
 }
 
-/** 手机是固定的 390x844 竖屏，游戏本体是横屏，所以按当前窗口算一个缩放塞进去。 */
-function fitToViewport() {
-  if (!overlay) return;
-  const scale = Math.max(0.42, Math.min(0.92, (window.innerHeight - 36) / 844, (window.innerWidth - 36) / 390));
-  overlay.style.setProperty('--phone-scale', scale.toFixed(3));
-}
-
 function wire() {
-  document.getElementById('phone-btn-close').addEventListener('click', close);
-  document.getElementById('phone-btn-done').addEventListener('click', close);
+  document.getElementById('phone-btn-close').addEventListener('click', phone.close);
+  document.getElementById('phone-btn-done').addEventListener('click', phone.close);
 
   document.getElementById('phone-btn-comments').addEventListener('click', () => {
     const target = document.getElementById('phone-comments');
@@ -358,86 +343,17 @@ function wire() {
     viewMode = viewMode === 'today' ? 'total' : 'today';
     document.getElementById('phone-toggle-label').textContent =
       `${ctx.total.episodes} 期 · ${viewMode === 'today' ? '本期数据' : '累计数据'}`;
-    const grid = document.getElementById('phone-stats');
-    grid.innerHTML = statsGridHTML();
+    document.getElementById('phone-stats').innerHTML = statsGridHTML();
     playNumbers(0);
   });
 
   wireFav();
 
-  const screen = document.getElementById('phone-screen');
-  wireDragScroll(screen);
-  wireScrollHint(screen);
-}
-
-/**
- * 鼠标按住往上拖也能翻页——原本只能滚轮。触屏不接管（原生滚动本来就能划），
- * 所以只认 pointerType === 'mouse'。
- */
-function wireDragScroll(screen) {
-  let dragging = false;
-  let moved = false;   // 真的拖动过（超过 4px）才算拖拽，不然当普通点击放过去
-  let startY = 0;
-  let startTop = 0;
-
-  const onDown = e => {
-    if (e.pointerType !== 'mouse' || e.button !== 0) return;
-    dragging = true;
-    moved = false;
-    startY = e.clientY;
-    startTop = screen.scrollTop;
-  };
-
-  const onMove = e => {
-    if (!dragging) return;
-    // 手机整体被 --phone-scale 缩放过，鼠标走过的屏幕距离要除以缩放比才对得上内容里的距离
-    const scale = Number(getComputedStyle(overlay).getPropertyValue('--phone-scale')) || 1;
-    const dy = (e.clientY - startY) / scale;
-    if (!moved && Math.abs(dy) > 4) {
-      moved = true;
-      screen.classList.add('dragging');
-    }
-    if (moved) screen.scrollTop = startTop - dy;
-  };
-
-  const onUp = () => {
-    if (!dragging) return;
-    dragging = false;
-    screen.classList.remove('dragging');
-    if (!moved) return;
-    // 拖完松手浏览器还会补发一次 click，别让它落在按钮上（比如拖到一半正好停在"换一条"上）
-    const swallow = ev => { ev.stopPropagation(); ev.preventDefault(); };
-    window.addEventListener('click', swallow, true);
-    setTimeout(() => window.removeEventListener('click', swallow, true), 0);
-  };
-
-  screen.addEventListener('pointerdown', onDown);
-  window.addEventListener('pointermove', onMove);
-  window.addEventListener('pointerup', onUp);
-  window.addEventListener('pointercancel', onUp);
-  teardown.push(() => {
-    window.removeEventListener('pointermove', onMove);
-    window.removeEventListener('pointerup', onUp);
-    window.removeEventListener('pointercancel', onUp);
+  playNumbers(740); // 跟数据卡片的入场动画（0.74s 起）对齐，卡片浮上来时数字正好开始滚
+  requestAnimationFrame(() => {
+    const bar = document.getElementById('phone-bar');
+    if (bar) bar.style.width = `${ctx.stats.completion}%`;
   });
-}
-
-/** 手机左边那列"向下滑动查看更多"：点一下往下翻一屏，玩家自己滚了就淡出，不再出现。 */
-function wireScrollHint(screen) {
-  const hint = document.getElementById('phone-scroll-hint');
-  if (!hint) return;
-  if (screen.scrollHeight <= screen.clientHeight + 20) { // 内容没超出一屏就不提示
-    hint.classList.add('is-gone');
-    return;
-  }
-
-  const onScroll = () => {
-    if (screen.scrollTop <= 20) return;
-    hint.classList.add('is-gone');
-    screen.removeEventListener('scroll', onScroll);
-  };
-  screen.addEventListener('scroll', onScroll, { passive: true });
-  hint.addEventListener('click', () => screen.scrollBy({ top: 380, behavior: 'smooth' }));
 }
 
 /** 最热片段卡每次重渲染都要重新挂一次按钮（卡片整块被替换掉了）。 */
@@ -453,7 +369,7 @@ function wireFav() {
 }
 
 /**
- * 弹出手机数据页。
+ * 弹出 vlog 数据页（手机从画面上方落到正中）。
  * @param {object} opts
  *   state       —— 全局状态（读 publishLog / signalToday）
  *   dayContent  —— 当天内容数据（读可选的 vlogTitle / vlogComments）
@@ -488,36 +404,26 @@ export function open(opts) {
   viewMode = 'today';
   favIndex = 0;
 
-  overlay = document.getElementById('phone-overlay');
-  overlay.classList.toggle('phone-glitch', !!ctx.glitch);
-  overlay.innerHTML = screenHTML();
-  overlay.classList.remove('hidden');
-
-  fitToViewport();
-  window.addEventListener('resize', fitToViewport);
-
-  wire();
-  playNumbers(740); // 跟数据卡片的入场动画（0.74s 起）对齐，卡片浮上来时数字正好开始滚
-  requestAnimationFrame(() => {
-    const bar = document.getElementById('phone-bar');
-    if (bar) bar.style.width = `${stats.completion}%`;
+  // 注意别在 onUnmount 里清 ctx：装新 app 时 phone.mount() 会先把旧的静默卸掉，
+  // 那一步跑在本次 open 设好 ctx 之后、onMount 之前，清了的话 wire() 立刻就读到 null。
+  return phone.mount({
+    id: 'vlogstats',
+    pose: 'center',
+    enter: 'drop',
+    // 这一页只在加油站看得到——发布成功本身就说明当时有信号，所以状态栏是通的。
+    // 镇内那些"无服务"的场合由别的 app 自己传 false，见 phone.js 文件头。
+    signal: true,
+    clock: opts.clock != null ? opts.clock : state.minutes,
+    scrollHint: true,
+    html: contentHTML(),
+    onMount: () => {
+      document.getElementById('phone-overlay').classList.toggle('phone-glitch', !!ctx.glitch);
+      wire();
+    },
+    onClose: opts.onClose || null
   });
-
-  onCloseCb = opts.onClose || null;
-  return true;
 }
 
 export function close() {
-  if (!overlay) return;
-  window.removeEventListener('resize', fitToViewport);
-  teardown.forEach(fn => fn());
-  teardown = [];
-  overlay.classList.add('hidden');
-  overlay.innerHTML = '';
-  overlay.classList.remove('phone-glitch');
-  overlay = null;
-  ctx = null;
-  const cb = onCloseCb;
-  onCloseCb = null;
-  if (cb) cb();
+  phone.unmount();
 }

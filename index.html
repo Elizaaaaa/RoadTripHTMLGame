@@ -51,12 +51,6 @@
     <div id="clip-info-box" class="modal-box modal-box-small"></div>
   </div>
 
-  <!-- QQ/BB 事件后闲聊：跟事件绑定时才出现，仿 iMessage 的聊天串（QQ 灰气泡靠左、BB 蓝气泡靠右），
-       逐条弹出、浮在弹窗之上；见 engine/dialogue.js。 -->
-  <div id="dialogue-overlay" class="dialogue-overlay hidden">
-    <div id="dialogue-thread" class="dlg-thread"></div>
-  </div>
-
   <!-- 折叠纸条演出：事件正文里配了 paperSegments 的那一页不进弹窗，改成这张纸条在屏幕
        中央翻开（对折：上半块不动，下半块绕中间那道折痕转回来），摊平之后字迹才淡入，点一下
        整张淡出。骨架放在这里、文字由 engine/paper.js 填，样式见 ui.css「折叠纸条演出」一节。 -->
@@ -71,8 +65,11 @@
     <div class="paper-hint">点一下收起</div>
   </div>
 
-  <!-- 发布 vlog 之后弹出的"手机数据页"：竖屏手机外壳里显示当期互动数据；
-       内容由 engine/vlogstats.js 整块生成，样式见 engine/phone.css。 -->
+  <!-- 手机：一台 2019 年的 iPhone XS（375×812 刘海机 / iOS 12 日间配色 / 橙红中框）。
+       外壳、刘海、状态栏、姿态和进出场由 engine/phone.js 统一生成——它是个可复用的容器，
+       屏幕里装哪个 app 由调用方决定：engine/vlogstats.js 的 vlog 数据页（发布之后从画面
+       上方落到正中），engine/chat.js 的 QQ/BB 聊天（事件后闲聊，从右下角升起、停在角落
+       不压住事件正文）。样式见 engine/phone.css，整机零美术素材。 -->
   <div id="phone-overlay" class="phone-overlay hidden"></div>
 
   <!-- 地震演出的落灰层：平时 hidden，engine/quake.js 播放时才显示（见 ui.css「地震演出」一节）。

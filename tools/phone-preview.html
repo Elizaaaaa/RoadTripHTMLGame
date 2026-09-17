@@ -1,8 +1,12 @@
 <!DOCTYPE html>
 <!--
-  phone-preview.html —— "手机数据页"（发布 vlog 之后弹出的互动数据面板）的预览工具。
-  改 engine/phone.css / engine/vlogstats.js 时不用真的从第 1 天玩到发布，直接开这个
-  页面看效果：右上角可以切换第几天、理智档位、素材是否出错。
+  phone-preview.html —— 手机的预览工具。改 engine/phone.css / engine/phone.js /
+  engine/vlogstats.js / engine/chat.js 时不用真的玩到那一步，直接开这个页面看效果。
+
+  左上角面板分两块：
+    · 外壳（engine/phone.js）—— 装哪个 app、停在正中还是右下角、状态栏有没有信号、显示几点；
+    · 内容 —— vlog 数据页那档能切第几天 / 理智档位 / 素材是否出错；
+              聊天那档能切第几天里的哪一段对话，按「重播」再放一次。
 
   要用本地静态服务器打开（跟游戏本体一样，file:// 下 ES module + JSON 请求会被拦），
   在项目根目录执行 npx serve . 或 python -m http.server，再访问 /tools/phone-preview.html。
@@ -11,30 +15,50 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>手机数据页预览</title>
+<title>手机预览</title>
 <link rel="stylesheet" href="../engine/phone.css">
 <style>
   body {
     margin: 0;
+    min-height: 100vh;
     background: #0a0a0a;
     color: #d8d8d8;
     font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif;
   }
+  /* 角落姿态时手机不该挡住底下的东西——这块假"事件弹窗"按真弹窗的尺寸做（最宽 560px、
+     居中），用来检查聊天停在角落时到底压不压得到正文。缩窄浏览器窗口就能看出边界。 */
+  #stage {
+    max-width: 560px;
+    margin: 96px auto;
+    padding: 24px 28px;
+    background: rgba(32, 32, 34, 0.88);
+    border: 1px solid rgba(255, 255, 255, 0.13);
+    border-radius: 12px;
+    line-height: 1.9;
+    font-size: 15px;
+  }
+  #stage h2 { margin: 0 0 12px; font-size: 16px; font-weight: 500; color: #ff9900; }
+  #stage .hint { color: rgba(255, 255, 255, 0.45); font-size: 13px; }
   #panel {
     position: fixed;
     top: 12px;
     left: 12px;
     z-index: 500;
     display: flex;
-    gap: 8px;
+    flex-wrap: wrap;
+    gap: 8px 14px;
     align-items: center;
+    max-width: calc(100vw - 24px);
     padding: 10px 12px;
-    background: rgba(28, 28, 30, 0.9);
+    background: rgba(28, 28, 30, 0.94);
     border: 1px solid rgba(255, 255, 255, 0.12);
     border-radius: 10px;
     font-size: 13px;
   }
-  select, button {
+  #panel .sep { width: 1px; height: 18px; background: rgba(255, 255, 255, 0.16); }
+  #panel .grp.off { display: none; }
+  #panel .grp { display: contents; }
+  select, button, input[type="text"] {
     font: inherit;
     color: inherit;
     background: #1c1c1c;
@@ -42,19 +66,49 @@
     border-radius: 6px;
     padding: 4px 8px;
   }
+  input[type="text"] { width: 62px; }
   button { cursor: pointer; }
 </style>
 </head>
 <body>
   <div id="panel">
-    <label>第 <select id="sel-day"><option>1</option><option selected>2</option><option>3</option></select> 天</label>
-    <label>理智 <select id="sel-tier">
-      <option value="clear">清醒</option>
-      <option value="shaken">动摇</option>
-      <option value="breaking">濒崩</option>
+    <label>app <select id="sel-app">
+      <option value="vlog">vlog 数据页</option>
+      <option value="chat">QQ &amp; BB 聊天</option>
     </select></label>
-    <label><input type="checkbox" id="chk-glitch"> 素材出错</label>
+    <label>停靠 <select id="sel-pose">
+      <option value="center">正中</option>
+      <option value="corner">右下角</option>
+    </select></label>
+    <label><input type="checkbox" id="chk-signal"> 有信号</label>
+    <label>时间 <input type="text" id="inp-clock" value="23:12"></label>
+
+    <span class="sep"></span>
+
+    <label>第 <select id="sel-day"><option>1</option><option selected>2</option><option>3</option></select> 天</label>
+
+    <span class="grp" id="grp-vlog">
+      <label>理智 <select id="sel-tier">
+        <option value="clear">清醒</option>
+        <option value="shaken">动摇</option>
+        <option value="breaking">濒崩</option>
+      </select></label>
+      <label><input type="checkbox" id="chk-glitch"> 素材出错</label>
+    </span>
+
+    <span class="grp off" id="grp-chat">
+      <label>对话 <select id="sel-dlg"></select></label>
+    </span>
+
     <button id="btn-render">重新弹出</button>
+  </div>
+
+  <div id="stage">
+    <h2>底下的正文（检查角落姿态的遮挡）</h2>
+    <p>加油站的日光灯管一直在响。把手机架在油枪上、镜头对着镇子那头，画面里什么都没有，只有风把塑料袋卷过空地。</p>
+    <p>镇子里没有信号。走到这儿之前那四格一直是空的，只有站在这块水泥地上，右上角才重新亮起来。</p>
+    <p>素材传完要十几分钟。这段时间除了等，也没有别的事情可做。</p>
+    <p class="hint">这块假弹窗按真事件窗的尺寸做（最宽 560px、居中）。把浏览器窗口拉窄到 1200 以下，就能看到手机开始压住它的右下角。</p>
   </div>
 
   <div id="phone-overlay" class="phone-overlay hidden"></div>
@@ -62,6 +116,9 @@
 <script type="module">
 import * as reviewSys from '../engine/review.js';
 import * as vlogStats from '../engine/vlogstats.js';
+import * as chatSys from '../engine/chat.js';
+import * as phone from '../engine/phone.js';
+import * as kw from '../engine/keyword-parser.js';
 
 // 每天用哪几条素材：直接取当天所有事件发出的线索，模拟"全剪进时间轴"
 function cluesOfDay(dayContent) {
@@ -83,10 +140,37 @@ const [days, materials] = await Promise.all([
 ]);
 reviewSys.init(materials);
 
+const $ = id => document.getElementById(id);
+const currentDay = () => Number($('sel-day').value);
+const dialoguesOfDay = () => (days[String(currentDay())] || {}).dialogues || [];
+
+/** 切 app 时换掉面板下半截，并把停靠位调到这个 app 平时用的那个 */
+function syncPanel() {
+  const isChat = $('sel-app').value === 'chat';
+  $('grp-vlog').classList.toggle('off', isChat);
+  $('grp-chat').classList.toggle('off', !isChat);
+  $('sel-pose').value = isChat ? 'corner' : 'center';
+  $('chk-signal').checked = !isChat; // 聊天在镇里播，状态栏是"无服务"
+  if (isChat) fillDialogueList();
+}
+
+function fillDialogueList() {
+  const list = dialoguesOfDay();
+  $('sel-dlg').innerHTML = list.length
+    ? list.map((d, i) => `<option value="${i}">${d.id || `第 ${i + 1} 段`} · ${(d.lines || []).length} 条</option>`).join('')
+    : '<option value="">这天没配对话</option>';
+}
+
 function render() {
-  const day = Number(document.getElementById('sel-day').value);
-  const tier = document.getElementById('sel-tier').value;
-  const glitched = document.getElementById('chk-glitch').checked;
+  if ($('sel-app').value === 'chat') renderChat();
+  else renderVlog();
+  applyShell();
+}
+
+function renderVlog() {
+  const day = currentDay();
+  const tier = $('sel-tier').value;
+  const glitched = $('chk-glitch').checked;
 
   // 造一份假的 state：前面几天都发布过（这样"累计"那一档也有数），当天按面板选的档位算
   const publishLog = [];
@@ -101,21 +185,52 @@ function render() {
     });
   }
 
-  vlogStats.close();
   vlogStats.open({
     state: { day, publishLog, signalToday: (days[String(day)] || {}).signalPool || [] },
     day,
     dayContent: days[String(day)],
     channel: days.meta && days.meta.channel,
     cover: '../assets/maps/white-lake-map-now.png',
+    clock: $('inp-clock').value,
     onClose: null
   });
 }
 
-document.getElementById('btn-render').addEventListener('click', render);
-for (const id of ['sel-day', 'sel-tier', 'chk-glitch']) {
-  document.getElementById(id).addEventListener('change', render);
+function renderChat() {
+  const list = dialoguesOfDay();
+  const dialogue = list[Number($('sel-dlg').value) || 0];
+  if (!dialogue) { chatSys.clear(); return; }
+  chatSys.clear(); // 重播：先把上一段收掉，免得两段接在一起
+  chatSys.play(dialogue, `preview-${currentDay()}-${$('sel-dlg').value}-${Date.now()}`, {
+    clock: $('inp-clock').value,
+    // 预览里没有存档，一律当成"还没收进记事本"，这样关键词链接的蓝色能看出来
+    renderText: text => kw.parseKeywords(text, () => false)
+  });
 }
+
+/** 外壳那几项是挂载之后随时能改的，不用重新弹出整台手机——姿态系统就是干这个的。 */
+function applyShell() {
+  if (!phone.isOpen()) return;
+  phone.setPose($('sel-pose').value);
+  phone.setSignal($('chk-signal').checked);
+  phone.setClock($('inp-clock').value);
+}
+
+$('btn-render').addEventListener('click', render);
+$('sel-app').addEventListener('change', () => { syncPanel(); render(); });
+$('sel-day').addEventListener('change', () => {
+  if ($('sel-app').value === 'chat') fillDialogueList();
+  render();
+});
+for (const id of ['sel-tier', 'chk-glitch', 'sel-dlg']) {
+  $(id).addEventListener('change', render);
+}
+for (const id of ['sel-pose', 'chk-signal']) {
+  $(id).addEventListener('change', applyShell);
+}
+$('inp-clock').addEventListener('input', applyShell);
+
+syncPanel();
 render();
 </script>
 </body>
